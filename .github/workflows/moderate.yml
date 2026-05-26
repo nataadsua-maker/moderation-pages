@@ -21,6 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Record start time
+        id: start
+        run: echo "ts=$(date +%s)" >> $GITHUB_OUTPUT
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -46,6 +50,7 @@ jobs:
           echo "submission_id=$SID" >> $GITHUB_OUTPUT
 
       - name: Run analyzer
+        id: analyzer
         env:
           SUBMISSION_ID: ${{ steps.sid.outputs.submission_id }}
           WORKER_URL: ${{ vars.WORKER_URL }}
@@ -56,3 +61,18 @@ jobs:
           R2_S3_ENDPOINT: ${{ vars.R2_S3_ENDPOINT }}
           R2_BUCKET: moderation-videos
         run: python -u analyzer/moderate.py --submission-id "$SUBMISSION_ID"
+
+      - name: Report GH Actions usage to Worker
+        if: always()
+        env:
+          WORKER_URL: ${{ vars.WORKER_URL }}
+          VERDICT_SHARED_SECRET: ${{ secrets.VERDICT_SHARED_SECRET }}
+          START_TS: ${{ steps.start.outputs.ts }}
+        run: |
+          DURATION_SEC=$(( $(date +%s) - START_TS ))
+          DURATION_MIN=$(awk "BEGIN { printf \"%.2f\", $DURATION_SEC / 60 }")
+          echo "Workflow took ${DURATION_MIN} min"
+          curl -sS -X POST "${WORKER_URL}/api/internal/usage-report" \
+            -H "Authorization: Bearer ${VERDICT_SHARED_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"minutes\": ${DURATION_MIN}}" || true
