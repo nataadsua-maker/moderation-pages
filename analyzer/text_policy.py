@@ -37,6 +37,22 @@ STOP_WORD_RULES = [
      "hint": "медицинские обещания (cure/heal/miracle) запрещены"},
     {"id": "before_after_text", "pattern": r"\bbefore.{0,15}after\b", "section": "2.3, 4.3", "severity": "warn",
      "hint": "before/after — реджект только при split-screen или шок-сравнении"},
+
+    # === Prompt injection — попытки манипуляции LLM через тексты крео ===
+    {"id": "pi_ignore", "pattern": r"\bignore (previous|all|prior|the) (instructions|prompts|rules|context)",
+     "section": "manipulation", "severity": "error", "hint": "попытка манипуляции LLM (prompt injection)"},
+    {"id": "pi_disregard", "pattern": r"\bdisregard (the |all )?(above|previous|instructions)",
+     "section": "manipulation", "severity": "error", "hint": "попытка манипуляции LLM"},
+    {"id": "pi_new_instructions", "pattern": r"\bnew instructions\s*[:.]",
+     "section": "manipulation", "severity": "error", "hint": "попытка манипуляции LLM"},
+    {"id": "pi_approve_regardless", "pattern": r"\bapprove (this|regardless|always|anyway)",
+     "section": "manipulation", "severity": "error", "hint": "попытка манипуляции LLM"},
+    {"id": "pi_skip_violations", "pattern": r"\bskip (violations|policy|checks)",
+     "section": "manipulation", "severity": "error", "hint": "попытка манипуляции LLM"},
+    {"id": "pi_output_json", "pattern": r'\boutput\s*\{|\breturn\s*\{["\']violations',
+     "section": "manipulation", "severity": "error", "hint": "попытка инжектить JSON-ответ"},
+    {"id": "pi_role", "pattern": r"\b(you are now|act as|pretend to be|system:|assistant:|user:)\b",
+     "section": "manipulation", "severity": "error", "hint": "попытка role-play injection"},
 ]
 
 

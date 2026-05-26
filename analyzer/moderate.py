@@ -95,8 +95,29 @@ def run(submission_id: str) -> None:
         print(f"  layer 1 hits: {len(l1)}")
 
         print("[6/9] Layer 2 LLM checks")
-        l2 = llm_checks.check(sub, lander, videos)
-        print(f"  layer 2 violations: {len(l2.get('violations') or [])}")
+        # Guard: if the lander is unreachable or its text is suspiciously short,
+        # auto-flag for manual review — we can't reliably do Ad-to-Page Match.
+        lander_text_len = len(lander.get("text", "") or "")
+        lander_ok = lander.get("ok", False)
+        if not lander_ok or lander_text_len < 200:
+            l2 = {
+                "violations": [{
+                    "where": "Lander",
+                    "quote": lander.get("url", ""),
+                    "reason": (
+                        f"Ленд недоступен (ok={lander_ok}) или слишком мало контента ({lander_text_len} симв.) — "
+                        f"автопроверка Ad-to-Page Match невозможна, нужна ручная проверка модератором."
+                    ),
+                    "policy_section": "manual_review",
+                    "category": "standard",
+                }],
+                "confidence": 0.0,
+                "_skipped": "lander_unavailable",
+            }
+            print(f"  layer 2 SKIPPED — lander unreachable, forcing manual_review")
+        else:
+            l2 = llm_checks.check(sub, lander, videos)
+            print(f"  layer 2 violations: {len(l2.get('violations') or [])}")
 
         print("[7/9] Assemble verdict")
         v = verdict_mod.assemble(sub, l1, l2, videos)
