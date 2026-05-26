@@ -56,15 +56,3 @@ jobs:
           R2_S3_ENDPOINT: ${{ vars.R2_S3_ENDPOINT }}
           R2_BUCKET: moderation-videos
         run: python -u analyzer/moderate.py --submission-id "$SUBMISSION_ID"
-
-      - name: Commit verdict page
-        run: |
-          git config user.email "action@users.noreply.github.com"
-          git config user.name "Moderation Bot"
-          git add docs/
-          if git diff --staged --quiet; then
-            echo "no changes"
-            exit 0
-          fi
-          git commit -m "verdict: ${{ steps.sid.outputs.submission_id }}"
-          git push

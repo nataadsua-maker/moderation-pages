@@ -15,8 +15,13 @@ def fetch_submission(submission_id: str) -> dict:
     return r.json()
 
 
-def post_verdict(submission_id: str, verdict: dict, page_url: str) -> None:
+def post_verdict(submission_id: str, verdict: dict, page_url: str, media_analysis: list | None = None) -> None:
     url = f"{os.environ['WORKER_URL']}/api/verdict"
-    payload = {"submission_id": submission_id, "page_url": page_url, "verdict": verdict}
-    r = requests.post(url, headers=_headers(), json=payload, timeout=30)
+    payload = {
+        "submission_id": submission_id,
+        "page_url": page_url,
+        "verdict": verdict,
+        "media_analysis": media_analysis or [],
+    }
+    r = requests.post(url, headers=_headers(), json=payload, timeout=60)
     r.raise_for_status()

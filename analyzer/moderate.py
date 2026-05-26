@@ -24,18 +24,13 @@ import api_client
 import lander as lander_mod
 import llm_checks
 import r2_client
-import render
 import subtitle_filter
 import text_policy
 import transcribe
+import translate
 import verdict as verdict_mod
 import video as video_mod
 import visual
-
-ROOT = Path(__file__).resolve().parent.parent
-TEMPLATES = ROOT / "templates"
-DOCS = ROOT / "docs"
-PAGES_BASE = "https://nataadsua-maker.github.io/moderation-pages"
 
 
 def run(submission_id: str) -> None:
@@ -107,17 +102,69 @@ def run(submission_id: str) -> None:
         v = verdict_mod.assemble(sub, l1, l2, videos)
         print(f"  overall={v['overall']} violations={len(v['violations'])} 18+={v['has_critical_18plus']}")
 
-        print("[8/9] Render HTML page")
-        html = render.render(sub, v, videos, lander, TEMPLATES)
-        out_dir = DOCS / "sub" / sub["id"]
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "index.html").write_text(html, encoding="utf-8")
-        page_url = f"{PAGES_BASE}/sub/{sub['id']}/"
-        print(f"  → {page_url}")
+        print("[8/9] Build media_analysis (transcripts + overlays + RU)")
+        media_analysis = build_media_analysis(videos)
 
-        print("[9/9] POST verdict to Worker")
-        api_client.post_verdict(sub["id"], v, page_url)
+        print("[9/9] POST verdict to Worker (single source of truth: Worker /sub/<id>)")
+        worker_url = os.environ["WORKER_URL"]
+        page_url = f"{worker_url}/sub/{sub['id']}"
+        api_client.post_verdict(sub["id"], v, page_url, media_analysis)
         print("  done")
+
+
+def build_media_analysis(videos: list[dict]) -> list[dict]:
+    """Pack transcript + non-subtitle overlays for each asset, with RU translations."""
+    # Collect all EN strings in a single batch (segments + non-subtitle overlays)
+    en_strings: list[str] = []
+    locations: list[tuple[int, str, int]] = []  # (video_idx, kind, item_idx)
+    for v_idx, v in enumerate(videos):
+        for s_idx, seg in enumerate(v["transcript"].get("segments", [])):
+            en_strings.append(seg["text"])
+            locations.append((v_idx, "segment", s_idx))
+        for f_idx, fr in enumerate(v.get("frames_analysis", [])):
+            if not fr.get("ocr_text"):
+                continue
+            if fr.get("is_subtitle"):
+                continue
+            en_strings.append(fr["ocr_text"])
+            locations.append((v_idx, "overlay", f_idx))
+
+    print(f"  translating {len(en_strings)} strings to RU...")
+    ru_strings = translate.batch_translate(en_strings) if en_strings else []
+
+    # Build per-video media_analysis
+    ru_map: dict[tuple[int, str, int], str] = {}
+    for loc, ru in zip(locations, ru_strings):
+        ru_map[loc] = ru
+
+    out: list[dict] = []
+    for v_idx, v in enumerate(videos):
+        segments = []
+        for s_idx, seg in enumerate(v["transcript"].get("segments", [])):
+            segments.append({
+                "start": seg["start"],
+                "end": seg["end"],
+                "text_en": seg["text"],
+                "text_ru": ru_map.get((v_idx, "segment", s_idx), ""),
+            })
+        overlays = []
+        for f_idx, fr in enumerate(v.get("frames_analysis", [])):
+            if not fr.get("ocr_text"):
+                continue
+            overlays.append({
+                "ts": fr["ts"],
+                "ts_sec": fr["ts_sec"],
+                "text_en": fr["ocr_text"],
+                "text_ru": ru_map.get((v_idx, "overlay", f_idx), ""),
+                "is_subtitle": bool(fr.get("is_subtitle")),
+            })
+        out.append({
+            "key": v["key"],
+            "kind": v.get("kind", "video"),
+            "transcript_segments": segments,
+            "overlays": overlays,
+        })
+    return out
 
 
 def _fmt_ts(sec: float) -> str:
