@@ -25,6 +25,7 @@ import lander as lander_mod
 import llm_checks
 import r2_client
 import render
+import subtitle_filter
 import text_policy
 import transcribe
 import verdict as verdict_mod
@@ -65,6 +66,9 @@ def run(submission_id: str) -> None:
                 "frames_analysis": frames_analysis,
             })
 
+        # Mark subtitle-style OCR (duplicates voiceover) so the report only shows real plашки.
+        subtitle_filter.annotate_frames(videos)
+
         print("[5/9] Layer 1 regex scan")
         l1: list[dict] = []
         l1 += text_policy.scan_text(sub["adtitle"], "Adtitle")
@@ -76,7 +80,8 @@ def run(submission_id: str) -> None:
                 where = f"Video {v_idx+1}, {_fmt_ts(seg['start'])} озвучка"
                 l1 += text_policy.scan_text(seg["text"], where)
             for fr in v["frames_analysis"]:
-                if fr["ocr_text"]:
+                # Skip subtitle dupes — they've already been scanned via the transcript pass.
+                if fr["ocr_text"] and not fr.get("is_subtitle"):
                     l1 += text_policy.scan_text(fr["ocr_text"], f"Video {v_idx+1}, {fr['ts']} плашка")
         print(f"  layer 1 hits: {len(l1)}")
 

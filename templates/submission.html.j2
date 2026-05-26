@@ -102,14 +102,17 @@
         {% endif %}
       </div>
 
+      {% set static_overlays = v.frames_analysis | selectattr("ocr_text") | rejectattr("is_subtitle") | list %}
+      {% if static_overlays %}
       <div>
-        <strong>Плашки на кадрах:</strong>
-        {% for fr in v.frames_analysis %}
-          {% if fr.ocr_text %}
-            <div class="seg"><span class="ts">{{ fr.ts }}</span>{{ fr.ocr_text }}</div>
-          {% endif %}
+        <strong>Статичные плашки:</strong>
+        {% for fr in static_overlays %}
+          <div class="seg"><span class="ts">{{ fr.ts }}</span>{{ fr.ocr_text }}</div>
         {% endfor %}
       </div>
+      {% else %}
+        <div class="muted" style="font-size:12px;margin-top:6px">Отдельных статичных плашек нет (текст в кадрах дублирует озвучку — субтитры).</div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
