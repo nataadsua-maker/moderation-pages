@@ -1,0 +1,70 @@
+name: moderate
+
+on:
+  repository_dispatch:
+    types: [moderate]
+  workflow_dispatch:
+    inputs:
+      submission_id:
+        description: "Submission ID to moderate (manual run)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: moderate-${{ github.event.client_payload.submission_id || inputs.submission_id }}
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: analyzer/requirements.txt
+
+      - name: Install ffmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Install Python deps
+        run: pip install -r analyzer/requirements.txt
+
+      - name: Resolve submission id
+        id: sid
+        run: |
+          SID="${{ github.event.client_payload.submission_id }}"
+          if [ -z "$SID" ]; then SID="${{ inputs.submission_id }}"; fi
+          if [ -z "$SID" ]; then echo "no submission_id"; exit 1; fi
+          echo "submission_id=$SID" >> $GITHUB_OUTPUT
+
+      - name: Run analyzer
+        env:
+          SUBMISSION_ID: ${{ steps.sid.outputs.submission_id }}
+          WORKER_URL: ${{ vars.WORKER_URL }}
+          VERDICT_SHARED_SECRET: ${{ secrets.VERDICT_SHARED_SECRET }}
+          NIM_API_KEY: ${{ secrets.NIM_API_KEY }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_S3_ENDPOINT: ${{ vars.R2_S3_ENDPOINT }}
+          R2_BUCKET: moderation-videos
+        run: python -u analyzer/moderate.py --submission-id "$SUBMISSION_ID"
+
+      - name: Commit verdict page
+        run: |
+          git config user.email "action@users.noreply.github.com"
+          git config user.name "Moderation Bot"
+          git add docs/
+          if git diff --staged --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "verdict: ${{ steps.sid.outputs.submission_id }}"
+          git push

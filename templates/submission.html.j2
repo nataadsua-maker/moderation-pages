@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Разбор #{{ sub.id[:8] }} — {{ sub.offer }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#f7f7f8;color:#1a1a1a;margin:0;padding:0;line-height:1.5}
+  .container{max-width:920px;margin:0 auto;padding:24px 20px}
+  header{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #e5e5e7;margin-bottom:24px}
+  h1{font-size:22px;font-weight:600;margin:0 0 4px}
+  h2{font-size:18px;font-weight:600;margin:24px 0 12px}
+  h3{font-size:14px;font-weight:600;margin:14px 0 8px;color:#666;text-transform:uppercase;letter-spacing:.05em}
+  .card{background:#fff;border:1px solid #e5e5e7;border-radius:12px;padding:18px 20px;margin-bottom:14px}
+  .verdict-banner{padding:18px 20px;border-radius:12px;margin-bottom:18px;font-weight:600}
+  .verdict-approve{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+  .verdict-reject{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+  .verdict-critical{background:#fff3cd;color:#856404;border:1px solid #ffeaa7;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td,th{padding:8px 10px;border-bottom:1px solid #f0f0f3;text-align:left;vertical-align:top}
+  th{color:#666;font-weight:500;background:#fafafa}
+  .muted{color:#666;font-size:13px}
+  .quote{font-family:ui-monospace,SF Mono,monospace;background:#fafafa;padding:2px 6px;border-radius:4px;font-size:12px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:500}
+  .pill-critical{background:#f8d7da;color:#721c24}
+  .pill-standard{background:#fff3cd;color:#856404}
+  .video-block{margin-bottom:16px}
+  .frames{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .frame{font-size:11px;text-align:center;color:#666}
+  .seg{font-size:12px;padding:4px 8px;background:#fafafa;border-radius:4px;margin-bottom:3px}
+  .seg .ts{color:#999;font-family:ui-monospace,monospace;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div>
+      <h1>Разбор #{{ sub.id[:8] }}</h1>
+      <div class="muted">{{ sub.offer }} · {{ sub.platform_label }} · {{ ts_human }}</div>
+    </div>
+    <div>
+      <a href="../../" class="muted" style="text-decoration:none">← Главная</a>
+    </div>
+  </header>
+
+  {% if verdict.has_critical_18plus %}
+  <div class="verdict-banner verdict-critical">⚠️ КРИТИЧЕСКОЕ НАРУШЕНИЕ: обнаружен adult / 18+ контент. Категория — абсолютный запрет (раздел 4.3).</div>
+  {% endif %}
+
+  {% if verdict.overall == "approve" %}
+    <div class="verdict-banner verdict-approve">✅ APPROVED — нарушений не найдено.</div>
+  {% else %}
+    <div class="verdict-banner verdict-reject">❌ REJECTED — найдено {{ verdict.violations|length }} нарушений.</div>
+  {% endif %}
+
+  {% if verdict.violations %}
+  <div class="card">
+    <h2>Нарушения</h2>
+    <table>
+      <tr><th>Где</th><th>Цитата</th><th>Причина</th><th>Раздел</th></tr>
+      {% for v in verdict.violations %}
+      <tr>
+        <td>{{ v.where }} {% if v.category == "critical_18plus" %}<span class="pill pill-critical">18+</span>{% endif %}</td>
+        <td><span class="quote">{{ v.quote }}</span></td>
+        <td>{{ v.reason }}</td>
+        <td><span class="muted">{{ v.policy_section }}</span></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Креатив</h2>
+    <h3>Adtitle</h3>
+    <div>{{ sub.adtitle }}</div>
+    <h3>Description</h3>
+    <div>{{ sub.description }}</div>
+    <h3>Button CTA</h3>
+    <div>{{ sub.button_cta }}</div>
+    <h3>Ленд</h3>
+    <div><a href="{{ sub.lander_url }}" target="_blank">{{ sub.lander_url }}</a></div>
+    {% if lander.title %}<div class="muted">{{ lander.title }}</div>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Видео ({{ videos|length }})</h2>
+    {% for v in videos %}
+    <div class="video-block">
+      <h3>Video {{ loop.index }}</h3>
+
+      <div style="margin-bottom:8px">
+        <strong>Озвучка:</strong>
+        {% if v.transcript.segments %}
+          {% for seg in v.transcript.segments %}
+            <div class="seg"><span class="ts">{{ "%02d:%02d"|format((seg.start // 60)|int, (seg.start % 60)|int) }}</span>{{ seg.text }}</div>
+          {% endfor %}
+        {% else %}
+          <span class="muted">тишина / транскрипт пустой</span>
+        {% endif %}
+      </div>
+
+      <div>
+        <strong>Плашки на кадрах:</strong>
+        {% for fr in v.frames_analysis %}
+          {% if fr.ocr_text %}
+            <div class="seg"><span class="ts">{{ fr.ts }}</span>{{ fr.ocr_text }}</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="muted" style="margin-top:30px;font-size:11px">
+    Сгенерировано автоматически. Источник полиси: rsoc-policy-reference.md.
+    Confidence Layer 2: {{ "%.2f"|format(verdict.stats.confidence) }}.
+  </div>
+</div>
+</body>
+</html>
