@@ -80,12 +80,13 @@ def run(submission_id: str) -> None:
         # Mark subtitle-style OCR (duplicates voiceover) so the report only shows real plашки.
         subtitle_filter.annotate_frames(videos)
 
-        print("[5/9] Layer 1 regex scan")
+        print("[5/9] Layer 1 regex scan (creative only — lander is partner's responsibility)")
         l1: list[dict] = []
         l1 += text_policy.scan_text(sub["adtitle"], "Adtitle")
         l1 += text_policy.scan_text(sub["description"], "Description")
         l1 += text_policy.scan_text(sub["button_cta"], "Button CTA")
-        l1 += text_policy.scan_text(lander.get("text", ""), "Lander")
+        # Lander is NOT scanned for stop-words — partner (System1/ADS) owns lander compliance.
+        # We only fetch the lander to feed it as context to Layer 2 LLM for Ad-to-Page Match.
         for v_idx, v in enumerate(videos):
             label = "Картинка" if v.get("kind") == "image" else "Видео"
             for seg in v["transcript"]["segments"]:
