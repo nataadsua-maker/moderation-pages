@@ -86,32 +86,44 @@
   </div>
 
   <div class="card">
-    <h2>Видео ({{ videos|length }})</h2>
+    <h2>Креативы ({{ videos|length }})</h2>
     {% for v in videos %}
     <div class="video-block">
-      <h3>Video {{ loop.index }}</h3>
+      <h3>{{ "Картинка" if v.kind == "image" else "Видео" }} {{ loop.index }}</h3>
 
-      <div style="margin-bottom:8px">
-        <strong>Озвучка:</strong>
-        {% if v.transcript.segments %}
-          {% for seg in v.transcript.segments %}
-            <div class="seg"><span class="ts">{{ "%02d:%02d"|format((seg.start // 60)|int, (seg.start % 60)|int) }}</span>{{ seg.text }}</div>
+      {% if v.kind == "video" %}
+        <div style="margin-bottom:8px">
+          <strong>Озвучка:</strong>
+          {% if v.transcript.segments %}
+            {% for seg in v.transcript.segments %}
+              <div class="seg"><span class="ts">{{ "%02d:%02d"|format((seg.start // 60)|int, (seg.start % 60)|int) }}</span>{{ seg.text }}</div>
+            {% endfor %}
+          {% else %}
+            <span class="muted">тишина / транскрипт пустой</span>
+          {% endif %}
+        </div>
+
+        {% set static_overlays = v.frames_analysis | selectattr("ocr_text") | rejectattr("is_subtitle") | list %}
+        {% if static_overlays %}
+        <div>
+          <strong>Статичные плашки:</strong>
+          {% for fr in static_overlays %}
+            <div class="seg"><span class="ts">{{ fr.ts }}</span>{{ fr.ocr_text }}</div>
           {% endfor %}
+        </div>
         {% else %}
-          <span class="muted">тишина / транскрипт пустой</span>
+          <div class="muted" style="font-size:12px;margin-top:6px">Отдельных статичных плашек нет (текст в кадрах дублирует озвучку — субтитры).</div>
         {% endif %}
-      </div>
-
-      {% set static_overlays = v.frames_analysis | selectattr("ocr_text") | rejectattr("is_subtitle") | list %}
-      {% if static_overlays %}
-      <div>
-        <strong>Статичные плашки:</strong>
-        {% for fr in static_overlays %}
-          <div class="seg"><span class="ts">{{ fr.ts }}</span>{{ fr.ocr_text }}</div>
-        {% endfor %}
-      </div>
       {% else %}
-        <div class="muted" style="font-size:12px;margin-top:6px">Отдельных статичных плашек нет (текст в кадрах дублирует озвучку — субтитры).</div>
+        {% set fr = v.frames_analysis[0] %}
+        {% if fr and fr.ocr_text %}
+        <div>
+          <strong>Текст на картинке:</strong>
+          <div class="seg">{{ fr.ocr_text }}</div>
+        </div>
+        {% else %}
+          <div class="muted" style="font-size:12px">Текстовых элементов на картинке не обнаружено.</div>
+        {% endif %}
       {% endif %}
     </div>
     {% endfor %}

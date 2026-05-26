@@ -47,21 +47,32 @@ def run(submission_id: str) -> None:
     lander = lander_mod.fetch(sub["lander_url"])
     print(f"  ok={lander['ok']} title={lander.get('title', '')[:80]!r}")
 
-    print(f"[3-4/9] Processing {len(sub['video_keys'])} videos")
+    print(f"[3-4/9] Processing {len(sub['video_keys'])} assets")
+    IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         videos: list[dict] = []
         for i, key in enumerate(sub["video_keys"]):
-            print(f"  video {i+1}: download {key}")
-            local = r2_client.download(key, tmp / f"v{i}_{Path(key).name}")
-            print(f"  video {i+1}: extract frames")
-            frames = video_mod.extract_frames(local, tmp / f"frames_{i}", n=8)
-            print(f"  video {i+1}: transcribe")
-            transcript = transcribe.transcribe(local)
-            print(f"  video {i+1}: vision analyze {len(frames)} frames")
-            frames_analysis = visual.analyze_video_frames(frames)
+            ext = Path(key).suffix.lower()
+            kind = "image" if ext in IMAGE_EXTS else "video"
+            print(f"  asset {i+1} ({kind}): download {key}")
+            local = r2_client.download(key, tmp / f"a{i}_{Path(key).name}")
+            if kind == "image":
+                # Treat the image itself as a single frame at ts=0
+                frames = [{"path": local, "ts_sec": 0.0}]
+                transcript = {"language": "", "segments": [], "full_text": ""}
+                print(f"  asset {i+1}: vision analyze 1 frame")
+                frames_analysis = visual.analyze_video_frames(frames)
+            else:
+                print(f"  asset {i+1}: extract frames")
+                frames = video_mod.extract_frames(local, tmp / f"frames_{i}", n=8)
+                print(f"  asset {i+1}: transcribe")
+                transcript = transcribe.transcribe(local)
+                print(f"  asset {i+1}: vision analyze {len(frames)} frames")
+                frames_analysis = visual.analyze_video_frames(frames)
             videos.append({
                 "key": key,
+                "kind": kind,
                 "transcript": transcript,
                 "frames_analysis": frames_analysis,
             })
@@ -76,13 +87,15 @@ def run(submission_id: str) -> None:
         l1 += text_policy.scan_text(sub["button_cta"], "Button CTA")
         l1 += text_policy.scan_text(lander.get("text", ""), "Lander")
         for v_idx, v in enumerate(videos):
+            label = "Картинка" if v.get("kind") == "image" else "Видео"
             for seg in v["transcript"]["segments"]:
-                where = f"Video {v_idx+1}, {_fmt_ts(seg['start'])} озвучка"
+                where = f"{label} {v_idx+1}, {_fmt_ts(seg['start'])} озвучка"
                 l1 += text_policy.scan_text(seg["text"], where)
             for fr in v["frames_analysis"]:
-                # Skip subtitle dupes — they've already been scanned via the transcript pass.
                 if fr["ocr_text"] and not fr.get("is_subtitle"):
-                    l1 += text_policy.scan_text(fr["ocr_text"], f"Video {v_idx+1}, {fr['ts']} плашка")
+                    suffix = "плашка" if v.get("kind") != "image" else "текст"
+                    where = f"{label} {v_idx+1}" + (f", {fr['ts']} {suffix}" if v.get("kind") != "image" else f", {suffix}")
+                    l1 += text_policy.scan_text(fr["ocr_text"], where)
         print(f"  layer 1 hits: {len(l1)}")
 
         print("[6/9] Layer 2 LLM checks")

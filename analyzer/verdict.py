@@ -39,6 +39,8 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
 
     # Visual per-frame
     for v_idx, video in enumerate(videos):
+        kind = video.get("kind", "video")
+        label = "Картинка" if kind == "image" else "Видео"
         for fr in video.get("frames_analysis", []):
             for viol in fr.get("visual_violations", []):
                 t = viol.get("type", "")
@@ -46,8 +48,9 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
                 is_18plus = t == "adult_18plus"
                 if is_18plus:
                     critical_18plus = True
+                where = f"{label} {v_idx+1}" if kind == "image" else f"{label} {v_idx+1}, {fr['ts']} кадр"
                 violations.append({
-                    "where": f"Video {v_idx+1}, {fr['ts']} кадр",
+                    "where": where,
                     "quote": detail or t,
                     "reason": _visual_reason(t),
                     "policy_section": "4.3" if t in ("adult_18plus", "weapons", "gambling", "politics", "drugs") else "2.3",
