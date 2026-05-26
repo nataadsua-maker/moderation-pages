@@ -21,6 +21,7 @@ import traceback
 from pathlib import Path
 
 import api_client
+import drive
 import lander as lander_mod
 import llm_checks
 import r2_client
@@ -44,6 +45,7 @@ def run(submission_id: str) -> None:
 
     print(f"[3-4/9] Processing {len(sub['video_keys'])} assets")
     IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+    local_assets: list[Path] = []  # tracked for Drive archive
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         videos: list[dict] = []
@@ -52,6 +54,7 @@ def run(submission_id: str) -> None:
             kind = "image" if ext in IMAGE_EXTS else "video"
             print(f"  asset {i+1} ({kind}): download {key}")
             local = r2_client.download(key, tmp / f"a{i}_{Path(key).name}")
+            local_assets.append(local)
             if kind == "image":
                 # Treat the image itself as a single frame at ts=0
                 frames = [{"path": local, "ts_sec": 0.0}]
@@ -126,7 +129,34 @@ def run(submission_id: str) -> None:
         print("[8/9] Build media_analysis (transcripts + overlays + RU)")
         media_analysis = build_media_analysis(videos)
 
-        print("[9/9] POST verdict to Worker (single source of truth: Worker /sub/<id>)")
+        print("[9a/9] Archive assets to Google Drive")
+        try:
+            drive_url = drive.upload_submission_assets(
+                local_assets,
+                submission_id=sub["id"],
+                offer=sub.get("offer", ""),
+                buyer_username=sub.get("buyer_username"),
+                metadata={
+                    "id": sub["id"],
+                    "tg_id": sub.get("tg_id"),
+                    "buyer_username": sub.get("buyer_username"),
+                    "buyer_first_name": sub.get("buyer_first_name"),
+                    "platform": sub.get("platform"),
+                    "offer": sub.get("offer"),
+                    "lander_url": sub.get("lander_url"),
+                    "adtitle": sub.get("adtitle"),
+                    "description": sub.get("description"),
+                    "button_cta": sub.get("button_cta"),
+                    "created_at": sub.get("created_at"),
+                    "verdict": v,
+                },
+            )
+            if drive_url:
+                print(f"  drive: {drive_url}")
+        except Exception as e:
+            print(f"  drive: archive failed (non-fatal): {e}")
+
+        print("[9b/9] POST verdict to Worker (single source of truth: Worker /sub/<id>)")
         worker_url = os.environ["WORKER_URL"]
         page_url = f"{worker_url}/sub/{sub['id']}"
         api_client.post_verdict(sub["id"], v, page_url, media_analysis)
