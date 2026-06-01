@@ -52,6 +52,7 @@ STRICT JSON ONLY:
 
 Only include real violations. If nothing → "violations": [].
 Reasons must be in Russian, concise, one sentence each.
+Терминология в reason: целевую страницу называй «лендинг» или «целевая страница». НЕ пиши «лэндер»/«ленд»/«лэндере».
 """
 
 
