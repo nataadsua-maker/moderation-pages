@@ -41,18 +41,23 @@ STRICT JSON ONLY:
   "violations": [
     {
       "where": "<Adtitle | Description | Button CTA | Voiceover Video N | Plашка Video N MM:SS | Lander | system>",
-      "quote": "<exact quote>",
-      "reason": "<one-sentence explanation in Russian>",
+      "title": "<краткий заголовок нарушения, 2-5 слов, по-русски: напр. 'Прямой призыв к действию', 'Обещание, которого нет на лендинге'>",
+      "quote": "<exact quote, в оригинале как на крео>",
+      "quote_ru": "<перевод цитаты на русский; если цитата уже русская или это URL — повтори как есть>",
+      "reason": "<«Почему нельзя»: 1-2 предложения на русском, простым языком, без жаргона, БЕЗ длинного тире>",
+      "how_to_fix": "<«Как исправить»: конкретная рекомендация на русском, что заменить/убрать; для запрещённых CTA предложи допустимый (Learn More / Discover More / Read More)>",
       "policy_section": "<e.g. 2.1, 4.4, 5.1.1, manipulation, manual_review>",
       "category": "standard"
     }
   ],
+  "summary": "<если есть нарушения: одна простая фраза-итог на русском в духе 'Проще говоря, ...'; если нарушений нет — пустая строка>",
   "confidence": 0.0-1.0
 }
 
 Only include real violations. If nothing → "violations": [].
-Reasons must be in Russian, concise, one sentence each.
-Терминология в reason: целевую страницу называй «лендинг» или «целевая страница». НЕ пиши «лэндер»/«ленд»/«лэндере».
+Тексты на русском, простым языком, без жаргона (не «страйк», не «testimonial»), БЕЗ длинного тире (—).
+Терминология: целевую страницу называй «лендинг» или «целевая страница». НЕ пиши «лэндер»/«ленд»/«лэндере».
+Для пункта manual_review поля title/quote_ru/how_to_fix можно оставить пустыми.
 """
 
 

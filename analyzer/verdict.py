@@ -31,8 +31,11 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
     for v in l2_result.get("violations") or []:
         violations.append({
             "where": v.get("where", ""),
+            "title": v.get("title", ""),
             "quote": v.get("quote", ""),
+            "quote_ru": v.get("quote_ru", ""),
             "reason": v.get("reason", ""),
+            "how_to_fix": v.get("how_to_fix", ""),
             "policy_section": v.get("policy_section", ""),
             "category": v.get("category") or "standard",
         })
@@ -65,6 +68,7 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
     return {
         "overall": overall,
         "violations": violations,
+        "summary": (l2_result.get("summary") or "") if violations else "",
         "has_critical_18plus": critical_18plus,
         "manual_review": manual_review,
         "stats": {
