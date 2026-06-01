@@ -108,8 +108,8 @@ def run(submission_id: str) -> None:
                     "where": "Lander",
                     "quote": lander.get("url", ""),
                     "reason": (
-                        f"Ленд недоступен (ok={lander_ok}) или слишком мало контента ({lander_text_len} симв.) — "
-                        f"автопроверка Ad-to-Page Match невозможна, нужна ручная проверка модератором."
+                        f"Ленд недоступен или содержит мало контента ({lander_text_len} симв.) — "
+                        f"соответствие ленду нужно проверить вручную."
                     ),
                     "policy_section": "manual_review",
                     "category": "standard",

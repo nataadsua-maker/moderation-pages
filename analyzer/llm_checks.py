@@ -33,7 +33,7 @@ Be calibrated about confidence:
 
 If you are uncertain (would set confidence < 0.7) — DO NOT auto-approve.
 Either include the borderline finding as a violation, or explicitly add:
-{"where": "system", "quote": "low confidence", "reason": "автопроверка не уверена, нужна ручная проверка модератором", "policy_section": "manual_review", "category": "standard"}
+{"where": "Проверка соответствия", "quote": "", "reason": "Требуется ручная проверка модератором.", "policy_section": "manual_review", "category": "standard"}
 
 === OUTPUT ===
 STRICT JSON ONLY:
