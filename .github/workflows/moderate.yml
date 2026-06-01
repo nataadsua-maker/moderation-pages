@@ -8,6 +8,10 @@ on:
       submission_id:
         description: "Submission ID to moderate (manual run)"
         required: true
+      silent:
+        description: "Silent re-run: refresh verdict, don't notify buyer (true/false)"
+        required: false
+        default: "false"
 
 permissions:
   contents: write
@@ -64,6 +68,7 @@ jobs:
           R2_BUCKET: moderation-videos
           GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SA_JSON }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ vars.GOOGLE_DRIVE_FOLDER_ID }}
+          SILENT: ${{ inputs.silent }}
         run: python -u analyzer/moderate.py --submission-id "$SUBMISSION_ID"
 
       - name: Report GH Actions usage to Worker

@@ -159,8 +159,9 @@ def run(submission_id: str) -> None:
         print("[9b/9] POST verdict to Worker (single source of truth: Worker /sub/<id>)")
         worker_url = os.environ["WORKER_URL"]
         page_url = f"{worker_url}/sub/{sub['id']}"
-        api_client.post_verdict(sub["id"], v, page_url, media_analysis)
-        print("  done")
+        notify = os.environ.get("SILENT", "").lower() not in ("1", "true", "yes")
+        api_client.post_verdict(sub["id"], v, page_url, media_analysis, notify=notify)
+        print(f"  done (notify={notify})")
 
 
 def build_media_analysis(videos: list[dict]) -> list[dict]:
