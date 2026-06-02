@@ -28,12 +28,19 @@ Violation types and STRICT criteria:
   ✗ Arrows in logos, illustrations, infographics — NOT a violation.
 
 - "fake_ui"
-  ✓ ONLY if the creative shows a FAKE button, FAKE search box, or FAKE search results
-    designed to trick the viewer into thinking they are interacting with a real system.
-    Example: a fake "Search Now" button overlaid on the video that doesn't exist on the actual page.
+  Flag ONLY a FAKE INTERACTIVE control overlaid to trick the viewer into thinking they can
+  CLICK/INTERACT with it: a fake clickable BUTTON whose label is an ACTION (e.g. "Search Now",
+  "Click Here", "Tap to Search", "Apply"), a fake SEARCH INPUT field, or a fake list of SEARCH
+  RESULTS. The defining trait: it imitates a clickable UI element / search engine widget.
+  ✗ A плашка / caption / text banner (product name, benefit, headline, descriptive phrase) is
+    NOT fake_ui — EVEN IF it has a colored background, rounded corners, border, shadow or any
+    button-like styling. A box with informative WORDS is a caption, not a button. Do NOT call it
+    "имитация кнопки".
   ✗ A real screenshot or demo of an actual product/website (auction site, app interface,
     real search engine, store) shown to demonstrate the product — NOT a violation.
   ✗ Standard subtitles / story captions / informational text overlays — NOT a violation.
+  Rule of thumb: if the overlay just conveys information (words), it is NOT fake_ui. Flag only
+  when it imitates an actionable click target. When unsure — DO NOT flag.
 
 - "before_after"
   ✓ ONLY if a SINGLE FRAME shows a split-screen "before | after" comparison
