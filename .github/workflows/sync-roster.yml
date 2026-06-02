@@ -1,0 +1,33 @@
+name: sync-roster
+
+# Pulls the buyer roster (ник трекера + ФИО) from the «Сотрудники» tab of the
+# team Google Sheet and writes it to Cloudflare KV (key `roster`). The moderation
+# service reads that KV for the «Баер» column.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # каждые 6 часов
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install google-api-python-client google-auth
+      - name: Sync roster
+        env:
+          GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SA_JSON }}
+          TEAM_SHEET_ID: ${{ vars.TEAM_SHEET_ID }}
+          TEAM_SHEET_GID: ${{ vars.TEAM_SHEET_GID }}
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE: ${{ vars.CF_KV_NAMESPACE }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: python -u analyzer/sync_roster.py
