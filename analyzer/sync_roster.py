@@ -51,6 +51,7 @@ def main() -> None:
     ci_fio = col("ФИО")
     ci_nick = col("Ник в трекере")
     ci_tg = col("Телега")
+    ci_status = col("Стату")  # «Статуc» (Работает / Уволен)
     if min(ci_fio, ci_nick, ci_tg) < 0:
         sys.exit(f"required columns not found (ФИО={ci_fio} Ник={ci_nick} Телега={ci_tg})")
 
@@ -58,13 +59,19 @@ def main() -> None:
         return str(row[i]).strip() if 0 <= i < len(row) else ""
 
     roster: dict[str, dict] = {}
+    fired = 0
     for row in vals[1:]:
         tg = cell(row, ci_tg)
-        if tg.startswith("@") and len(tg) > 1:
-            key = tg.lower().lstrip("@").strip()
-            if key:
-                roster[key] = {"trackerNick": cell(row, ci_nick) or None, "fio": cell(row, ci_fio) or None}
-    print("roster entries:", len(roster))
+        if not (tg.startswith("@") and len(tg) > 1):
+            continue
+        # Skip dismissed employees (Статус содержит «уволен»).
+        if "увол" in cell(row, ci_status).lower():
+            fired += 1
+            continue
+        key = tg.lower().lstrip("@").strip()
+        if key:
+            roster[key] = {"trackerNick": cell(row, ci_nick) or None, "fio": cell(row, ci_fio) or None}
+    print(f"roster entries: {len(roster)} (skipped fired: {fired})")
 
     acc = os.environ["CF_ACCOUNT_ID"]
     tok = os.environ["CF_API_TOKEN"]
