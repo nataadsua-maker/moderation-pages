@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install deps
-        run: pip install google-api-python-client google-auth
+        run: pip install google-api-python-client google-auth openpyxl
       - name: Sync roster
         env:
           GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SA_JSON }}
