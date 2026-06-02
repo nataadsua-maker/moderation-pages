@@ -48,6 +48,11 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
             for viol in fr.get("visual_violations", []):
                 t = viol.get("type", "")
                 detail = viol.get("detail", "")
+                # Vision model is unreliable on fake_ui — it keeps flagging normal text
+                # плашки as "имитация кнопки" (false positives). Textual CTA check already
+                # catches real "Click/Tap/Search here" cases, so skip visual fake_ui.
+                if t == "fake_ui":
+                    continue
                 is_18plus = t == "adult_18plus"
                 if is_18plus:
                     critical_18plus = True
