@@ -65,7 +65,13 @@ def run(submission_id: str) -> None:
                 print(f"  asset {i+1}: extract frames")
                 frames = video_mod.extract_frames(local, tmp / f"frames_{i}", n=8)
                 print(f"  asset {i+1}: transcribe")
-                transcript = transcribe.transcribe(local)
+                try:
+                    transcript = transcribe.transcribe(local)
+                except Exception as e:
+                    # Transcription is an external dependency (HF model download) — a
+                    # transient failure must not block the verdict. Proceed without it.
+                    print(f"  asset {i+1}: transcribe FAILED (proceeding without voiceover): {e}")
+                    transcript = {"language": "", "segments": [], "full_text": ""}
                 print(f"  asset {i+1}: vision analyze {len(frames)} frames")
                 frames_analysis = visual.analyze_video_frames(frames)
             videos.append({
