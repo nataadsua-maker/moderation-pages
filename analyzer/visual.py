@@ -70,7 +70,13 @@ ocr_text must be the actual text visible on screen, not your description of the 
 
 
 def analyze_frame(frame_path: Path) -> dict:
-    raw = vision_describe_frame(frame_path, VISION_PROMPT)
+    # A flaky vision call on one frame must NOT abort the whole submission —
+    # skip the frame (no OCR / no visual violations) and let the verdict complete.
+    try:
+        raw = vision_describe_frame(frame_path, VISION_PROMPT)
+    except Exception as e:
+        print(f"  vision failed for {frame_path} (skipping frame): {e}")
+        return {"ocr_text": "", "visual_violations": []}
     # Extract JSON (model may add prose around it)
     try:
         start = raw.find("{")

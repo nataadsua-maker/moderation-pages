@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -20,11 +21,24 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _post_chat(payload: dict, timeout: int = 120) -> dict:
-    r = requests.post(f"{NIM_BASE}/chat/completions", headers=_headers(), json=payload, timeout=timeout)
-    if r.status_code != 200:
-        raise RuntimeError(f"NIM error {r.status_code}: {r.text[:500]}")
-    return r.json()
+def _post_chat(payload: dict, timeout: int = 120, retries: int = 3) -> dict:
+    # NVIDIA NIM occasionally times out or returns 429/5xx — retry with backoff
+    # instead of letting one flaky call abort the whole submission.
+    last = None
+    for attempt in range(retries):
+        try:
+            r = requests.post(f"{NIM_BASE}/chat/completions", headers=_headers(), json=payload, timeout=timeout)
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code in (429, 500, 502, 503, 504):
+                last = RuntimeError(f"NIM {r.status_code}: {r.text[:200]}")
+            else:
+                raise RuntimeError(f"NIM error {r.status_code}: {r.text[:500]}")
+        except requests.exceptions.RequestException as e:
+            last = e
+        if attempt < retries - 1:
+            time.sleep(3 * (attempt + 1))  # 3s, 6s backoff
+    raise last if last else RuntimeError("NIM failed")
 
 
 def vision_describe_frame(frame_path: Path, question: str) -> str:
