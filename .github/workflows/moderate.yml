@@ -57,6 +57,7 @@ jobs:
 
       - name: Run analyzer
         id: analyzer
+        timeout-minutes: 8
         env:
           SUBMISSION_ID: ${{ steps.sid.outputs.submission_id }}
           WORKER_URL: ${{ vars.WORKER_URL }}
@@ -70,6 +71,26 @@ jobs:
           GOOGLE_DRIVE_FOLDER_ID: ${{ vars.GOOGLE_DRIVE_FOLDER_ID }}
           SILENT: ${{ inputs.silent }}
         run: python -u analyzer/moderate.py --submission-id "$SUBMISSION_ID"
+
+      # Анализатор завис/упал (в т.ч. таймаут 8 мин выше) и вердикт не отправил —
+      # не оставляем заявку висеть, отправляем её модератору на ручную проверку.
+      # Воркер идемпотентен: если вердикт уже пришёл, эндпоинт ничего не делает.
+      - name: Report analysis failure to Worker
+        if: failure()
+        env:
+          WORKER_URL: ${{ vars.WORKER_URL }}
+          VERDICT_SHARED_SECRET: ${{ secrets.VERDICT_SHARED_SECRET }}
+          SID_PAYLOAD: ${{ github.event.client_payload.submission_id }}
+          SID_INPUT: ${{ inputs.submission_id }}
+        run: |
+          SID="$SID_PAYLOAD"
+          if [ -z "$SID" ]; then SID="$SID_INPUT"; fi
+          if [ -z "$SID" ]; then echo "no submission id, skip"; exit 0; fi
+          echo "Reporting analysis failure for $SID"
+          curl -sS -X POST "${WORKER_URL}/api/internal/analysis-failed" \
+            -H "Authorization: Bearer ${VERDICT_SHARED_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"submission_id\": \"${SID}\"}" || true
 
       - name: Report GH Actions usage to Worker
         if: always()
