@@ -1,10 +1,21 @@
 """Per-frame visual analysis: OCR plашек + visual policy + 18+ detection."""
 from __future__ import annotations
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from nim import vision_describe_frame
 from video import format_ts
+
+
+# Frames within a video are independent NIM calls — analyze them concurrently so a
+# multi-video submission no longer runs ~2 min/video sequentially (the cause of the
+# 8-min step timeouts → manual review). Bounded pool: too many in-flight requests
+# risk NIM 429s. analyze_frame already retries with backoff and never raises, so a
+# flaky frame degrades gracefully. Videos themselves stay sequential to keep total
+# concurrency = VISION_CONCURRENCY, not VISION_CONCURRENCY × n_videos.
+VISION_CONCURRENCY = int(os.environ.get("VISION_CONCURRENCY", "4"))
 
 
 VISION_PROMPT = """You analyze a single frame from an advertising video for RSOC policy compliance.
@@ -105,10 +116,17 @@ def analyze_frame(frame_path: Path) -> dict:
 
 
 def analyze_video_frames(frames: list[dict]) -> list[dict]:
-    """frames: [{path, ts_sec}, ...]; returns same items enriched with 'ocr_text' and 'visual_violations' and 'ts'."""
+    """frames: [{path, ts_sec}, ...]; returns same items enriched with 'ocr_text' and 'visual_violations' and 'ts'.
+
+    Frames are analyzed concurrently (bounded by VISION_CONCURRENCY); output order
+    matches input order so timecodes/overlays stay aligned."""
+    if not frames:
+        return []
+    workers = max(1, min(VISION_CONCURRENCY, len(frames)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        analyses = list(pool.map(lambda fr: analyze_frame(fr["path"]), frames))
     out = []
-    for fr in frames:
-        analysis = analyze_frame(fr["path"])
+    for fr, analysis in zip(frames, analyses):
         out.append({
             "ts_sec": fr["ts_sec"],
             "ts": format_ts(fr["ts_sec"]),

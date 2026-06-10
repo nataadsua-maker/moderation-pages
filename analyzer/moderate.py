@@ -49,6 +49,11 @@ def run(submission_id: str) -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         videos: list[dict] = []
+
+        # Phase 1 — download + extract frames + transcribe (the cheaper half).
+        # Vision is deferred to phase 2 so we can persist transcripts BEFORE the slow
+        # per-frame vision loop: if the run later times out, the moderator still gets
+        # transcripts on the manual-review card instead of an empty one.
         for i, key in enumerate(sub["video_keys"]):
             ext = Path(key).suffix.lower()
             kind = "image" if ext in IMAGE_EXTS else "video"
@@ -59,8 +64,6 @@ def run(submission_id: str) -> None:
                 # Treat the image itself as a single frame at ts=0
                 frames = [{"path": local, "ts_sec": 0.0}]
                 transcript = {"language": "", "segments": [], "full_text": ""}
-                print(f"  asset {i+1}: vision analyze 1 frame")
-                frames_analysis = visual.analyze_video_frames(frames)
             else:
                 print(f"  asset {i+1}: extract frames")
                 frames = video_mod.extract_frames(local, tmp / f"frames_{i}", n=8)
@@ -72,14 +75,27 @@ def run(submission_id: str) -> None:
                     # transient failure must not block the verdict. Proceed without it.
                     print(f"  asset {i+1}: transcribe FAILED (proceeding without voiceover): {e}")
                     transcript = {"language": "", "segments": [], "full_text": ""}
-                print(f"  asset {i+1}: vision analyze {len(frames)} frames")
-                frames_analysis = visual.analyze_video_frames(frames)
             videos.append({
                 "key": key,
                 "kind": kind,
+                "frames": frames,
                 "transcript": transcript,
-                "frames_analysis": frames_analysis,
+                "frames_analysis": [],  # filled in phase 2
             })
+
+        # Early persist: transcripts-only media_analysis (no overlays/RU yet). Non-fatal —
+        # a failure here must not block the verdict.
+        try:
+            api_client.post_media_analysis(sub["id"], build_transcripts_only(videos))
+            print("  early media_analysis (transcripts) posted")
+        except Exception as e:
+            print(f"  early media_analysis post failed (non-fatal): {e}")
+
+        # Phase 2 — per-frame vision (OCR + visual policy + 18+). The slow half.
+        for i, v in enumerate(videos):
+            n = len(v["frames"])
+            print(f"  asset {i+1}: vision analyze {n} frame{'s' if n != 1 else ''}")
+            v["frames_analysis"] = visual.analyze_video_frames(v["frames"])
 
         # Mark subtitle-style OCR (duplicates voiceover) so the report only shows real plашки.
         subtitle_filter.annotate_frames(videos)
@@ -193,6 +209,25 @@ def run(submission_id: str) -> None:
         notify = os.environ.get("SILENT", "").lower() not in ("1", "true", "yes")
         api_client.post_verdict(sub["id"], v, page_url, media_analysis, notify=notify)
         print(f"  done (notify={notify})")
+
+
+def build_transcripts_only(videos: list[dict]) -> list[dict]:
+    """Minimal media_analysis for the early persist: transcript segments only, no
+    overlays (vision not run yet) and no RU translation (kept fast + bulletproof).
+    Same shape as build_media_analysis so the final full POST cleanly overwrites it."""
+    out: list[dict] = []
+    for v in videos:
+        segments = [
+            {"start": s["start"], "end": s["end"], "text_en": s["text"], "text_ru": ""}
+            for s in v["transcript"].get("segments", [])
+        ]
+        out.append({
+            "key": v["key"],
+            "kind": v.get("kind", "video"),
+            "transcript_segments": segments,
+            "overlays": [],
+        })
+    return out
 
 
 def build_media_analysis(videos: list[dict]) -> list[dict]:

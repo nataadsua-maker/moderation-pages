@@ -15,6 +15,15 @@ def fetch_submission(submission_id: str) -> dict:
     return r.json()
 
 
+def post_media_analysis(submission_id: str, media_analysis: list) -> None:
+    """Persist transcripts EARLY (before the slow vision loop) so a later timeout
+    still leaves the moderator something to read on the manual-review card."""
+    url = f"{os.environ['WORKER_URL']}/api/internal/media-analysis"
+    payload = {"submission_id": submission_id, "media_analysis": media_analysis}
+    r = requests.post(url, headers=_headers(), json=payload, timeout=30)
+    r.raise_for_status()
+
+
 def post_verdict(submission_id: str, verdict: dict, page_url: str, media_analysis: list | None = None, notify: bool = True) -> None:
     url = f"{os.environ['WORKER_URL']}/api/verdict"
     payload = {
