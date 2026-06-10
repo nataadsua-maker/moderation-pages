@@ -71,3 +71,65 @@ def scan_text(text: str, where: str) -> list[dict]:
                 "severity": rule["severity"],
             })
     return hits
+
+
+# === Deterministic numeric Ad-to-Page backstop (Tier 1) ===
+# Money/percent amounts are the highest-risk numbers. The LLM checks these contextually,
+# but it's flaky — so we also verify deterministically: a money/percent amount in the
+# creative whose digits do NOT appear anywhere on the lander is a hard Ad-to-Page break.
+MONEY_CLAIM_RE = re.compile(
+    r"\$\s?\d[\d,]*(?:\.\d+)?"          # $1,200  $50  $1,200.00
+    r"|\b\d[\d,]*\s?%"                  # 50%
+    r"|\b\d[\d,]*\s?(?:dollars|usd)\b",  # 1200 dollars / 1200 usd
+    re.IGNORECASE,
+)
+
+
+def _num_key(token: str) -> str:
+    """Normalize a numeric token to its integer-part digits so creative and lander
+    compare apples-to-apples: '$1,200' / '1,200.00' / '1200' all -> '1200'."""
+    digits_part = token.split(".")[0]          # drop cents: 1,200.00 -> 1,200
+    return re.sub(r"\D", "", digits_part)
+
+
+def lander_number_set(lander_text: str) -> set[str]:
+    """All numbers present on the lander, normalized to integer-part digits."""
+    return {_num_key(m) for m in re.findall(r"\d[\d.,]*", lander_text or "")}
+
+
+def extract_money_claims(text: str) -> list[str]:
+    if not text:
+        return []
+    return [m.group(0).strip() for m in MONEY_CLAIM_RE.finditer(text)]
+
+
+def check_numeric_claims(sources: list[tuple[str, str]], lander_text: str) -> list[dict]:
+    """Tier-1 deterministic backstop. `sources` = [(where, text), ...].
+    Returns a violation for each money/percent amount whose digits are absent from the lander.
+    Caller must only invoke this when the lander was fetched successfully (else everything
+    would falsely fail)."""
+    lander_nums = lander_number_set(lander_text)
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for where, text in sources:
+        for token in extract_money_claims(text):
+            d = _num_key(token)
+            if len(d) < 2:  # skip noisy single digits ("$5")
+                continue
+            if d in lander_nums:
+                continue
+            key = (where, d)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "where": where,
+                "quote": token,
+                "reason": (
+                    f"Сумма/число «{token}» из крео не найдено на лендинге. "
+                    f"По правилу Ad-to-Page любая цифра должна быть дословно на целевой странице."
+                ),
+                "how_to_fix": "Убери цифру из крео или поставь ровно ту, что есть на лендинге.",
+                "policy_section": "2.1",
+            })
+    return out

@@ -2,11 +2,24 @@
 from __future__ import annotations
 
 
-def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: list[dict]) -> dict:
+# Priority tiers (lower number = higher priority, Nataliia's ranking):
+#   1 — Ad-to-Page, identity, promises, numbers (semantic L2 + numeric backstop) + manipulation
+#   2 — stop-words in creative text (deterministic L1)
+#   3 — visual stop-techniques (arrows / before-after / weapons / 18+ …)
+# Tiering drives ORDER (важное показываем первым) and visibility, not the reject toggle —
+# любое нарушение по-прежнему = reject. manual_review-флаги держим в Tier 1 (самое важное —
+# «главное не смогли проверить»).
+TIER1 = 1
+TIER2 = 2
+TIER3 = 3
+
+
+def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: list[dict],
+             numeric_hits: list[dict] | None = None) -> dict:
     """Returns:
     {
       "overall": "approve" | "reject",
-      "violations": [{where, quote, reason, policy_section, category}],
+      "violations": [{where, quote, reason, policy_section, category, tier}],  # sorted by tier
       "has_critical_18plus": bool,
       "manual_review": bool,
       "stats": {...}
@@ -15,19 +28,35 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
     violations: list[dict] = []
     critical_18plus = False
 
-    # Layer 1
+    # Tier 1 — deterministic numeric Ad-to-Page backstop (money/percent absent from lander)
+    for h in numeric_hits or []:
+        violations.append({
+            "where": h.get("where", ""),
+            "title": "Число не подтверждено на лендинге",
+            "quote": h.get("quote", ""),
+            "reason": h.get("reason", ""),
+            "how_to_fix": h.get("how_to_fix", ""),
+            "policy_section": h.get("policy_section", "2.1"),
+            "category": "standard",
+            "tier": TIER1,
+        })
+
+    # Layer 1 — stop-words. Tier 2, except prompt-injection (manipulation) which is Tier 1.
     for h in l1_hits:
         if h["severity"] == "error":
+            tier = TIER1 if h["section"] == "manipulation" else TIER2
             violations.append({
                 "where": h["where"],
                 "quote": h["quote"],
                 "reason": h["hint"],
                 "policy_section": h["section"],
                 "category": "standard",
+                "tier": tier,
             })
-        # severity "warn" — не валит автоматически (числа/before-after), идёт во flags
+        # severity "warn" — не валит автоматически (числа проверяет numeric_hits + L2;
+        # before-after — визуальный слой), идёт во flags
 
-    # Layer 2 LLM
+    # Layer 2 LLM — semantic Ad-to-Page / identity / promises / numbers. Tier 1.
     for v in l2_result.get("violations") or []:
         violations.append({
             "where": v.get("where", ""),
@@ -38,6 +67,7 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
             "how_to_fix": v.get("how_to_fix", ""),
             "policy_section": v.get("policy_section", ""),
             "category": v.get("category") or "standard",
+            "tier": TIER1,
         })
 
     # Visual per-frame
@@ -63,7 +93,12 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
                     "reason": _visual_reason(t),
                     "policy_section": "4.3" if t in ("adult_18plus", "weapons", "gambling", "politics", "drugs") else "2.3",
                     "category": "critical_18plus" if is_18plus else "standard",
+                    "tier": TIER3,
                 })
+
+    # Order by priority tier (Tier 1 first) so the report and the buyer message surface the
+    # important violations before minor ones. Stable sort keeps within-tier order.
+    violations.sort(key=lambda v: v.get("tier", TIER3))
 
     confidence = l2_result.get("confidence", 1.0) or 1.0
     manual_review = confidence < 0.7 and not violations  # only when no decisive hits
@@ -79,7 +114,11 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
         "stats": {
             "layer1_count": len([h for h in l1_hits if h["severity"] == "error"]),
             "layer2_count": len(l2_result.get("violations") or []),
+            "numeric_count": len(numeric_hits or []),
             "visual_count": sum(len(v.get("frames_analysis", [])) for v in videos),
+            "tier1_count": len([v for v in violations if v.get("tier") == TIER1]),
+            "tier2_count": len([v for v in violations if v.get("tier") == TIER2]),
+            "tier3_count": len([v for v in violations if v.get("tier") == TIER3]),
             "confidence": confidence,
         },
     }

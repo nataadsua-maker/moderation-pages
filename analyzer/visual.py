@@ -9,7 +9,15 @@ from video import format_ts
 
 VISION_PROMPT = """You analyze a single frame from an advertising video for RSOC policy compliance.
 
-BE EXTREMELY CONSERVATIVE. When in doubt — DO NOT flag. You will be evaluated by precision, not recall.
+TWO DIFFERENT STANDARDS APPLY depending on the violation type:
+
+• For arrow_or_circle, fake_ui, before_after, fake_local, shock_content, weapons,
+  gambling, politics, drugs — BE CONSERVATIVE. These are prone to false positives.
+  When in doubt — DO NOT flag.
+
+• For adult_18plus — BE SENSITIVE (HIGH RECALL). This is a high-priority, zero-tolerance
+  category. When in doubt — DO flag. It is far better to send a borderline frame to a human
+  than to let 18+ content slip through. Recall matters more than precision here.
 
 Return STRICT JSON only:
 {
@@ -61,9 +69,19 @@ Violation types and STRICT criteria:
   ✓ These items shown as the MAIN visual subject (slot machine, gun, political figure, drugs).
   ✗ Background incidental presence — NOT a violation.
 
-- "adult_18plus"
-  ✓ Sexualized imagery, suggestive poses, lingerie/swimwear as main subject, ED context.
-  ✗ Normal clothing, beach photos without sexual framing — NOT a violation.
+- "adult_18plus"   [HIGH PRIORITY — err toward flagging, see standards note above]
+  ✓ Sexualized or suggestive imagery of people.
+  ✓ Deep / plunging cleavage, exposed or visually emphasized chest, a crop or camera focus
+    on breasts, buttocks or crotch.
+  ✓ Suggestive / provocative poses, "bedroom" framing, undressing, bedsheets-and-skin shots.
+  ✓ Lingerie, underwear, or swimwear as the main subject of the frame.
+  ✓ Bare skin presented in a flirtatious / seductive context.
+  ✓ ED / sexual-health context.
+  ✓ AMBIGUOUS frames a reasonable viewer could read as sexual — flag them anyway
+    (set detail to "двусмысленный кадр, возможно 18+").
+  ✗ Ordinary clothing, and ordinary beach/pool photos with NO sexual framing and NO
+    cleavage/skin emphasis — NOT a violation.
+  When unsure whether a frame crosses the line — FLAG IT.
 
 If nothing genuinely violates: return empty visual_violations array.
 ocr_text must be the actual text visible on screen, not your description of the image."""

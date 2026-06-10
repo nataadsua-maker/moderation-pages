@@ -103,6 +103,23 @@ def run(submission_id: str) -> None:
                     l1 += text_policy.scan_text(fr["ocr_text"], where)
         print(f"  layer 1 hits: {len(l1)}")
 
+        # Collect creative + media text for the numeric Ad-to-Page checks (Tier 1).
+        numeric_sources: list[tuple[str, str]] = [
+            ("Adtitle", sub["adtitle"]),
+            ("Description", sub["description"]),
+            ("Button CTA", sub["button_cta"]),
+        ]
+        for v_idx, v in enumerate(videos):
+            label = "Картинка" if v.get("kind") == "image" else "Видео"
+            for seg in v["transcript"]["segments"]:
+                numeric_sources.append((f"{label} {v_idx+1}, {_fmt_ts(seg['start'])} озвучка", seg["text"]))
+            for fr in v["frames_analysis"]:
+                if fr["ocr_text"] and not fr.get("is_subtitle"):
+                    numeric_sources.append((f"{label} {v_idx+1}, {fr['ts']}", fr["ocr_text"]))
+        numeric_claims: list[str] = []
+        for _, txt in numeric_sources:
+            numeric_claims += text_policy.extract_money_claims(txt)
+
         print("[6/9] Layer 2 LLM checks")
         # Guard: if the lander is unreachable or its text is suspiciously short,
         # auto-flag for manual review — we can't reliably do Ad-to-Page Match.
@@ -125,11 +142,19 @@ def run(submission_id: str) -> None:
             }
             print(f"  layer 2 SKIPPED — lander unreachable, forcing manual_review")
         else:
-            l2 = llm_checks.check(sub, lander, videos)
+            l2 = llm_checks.check(sub, lander, videos, numeric_claims=numeric_claims)
             print(f"  layer 2 violations: {len(l2.get('violations') or [])}")
 
+        # Tier-1 deterministic numeric backstop — only when the lander is actually
+        # available (otherwise every number would falsely fail). When the lander is
+        # unreachable the manual_review path above already covers us.
+        numeric_hits: list[dict] = []
+        if lander_ok and lander_text_len >= 200:
+            numeric_hits = text_policy.check_numeric_claims(numeric_sources, lander.get("text", ""))
+            print(f"  numeric backstop hits: {len(numeric_hits)}")
+
         print("[7/9] Assemble verdict")
-        v = verdict_mod.assemble(sub, l1, l2, videos)
+        v = verdict_mod.assemble(sub, l1, l2, videos, numeric_hits=numeric_hits)
         print(f"  overall={v['overall']} violations={len(v['violations'])} 18+={v['has_critical_18plus']}")
 
         print("[8/9] Build media_analysis (transcripts + overlays + RU)")
