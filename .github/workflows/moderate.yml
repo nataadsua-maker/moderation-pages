@@ -57,7 +57,7 @@ jobs:
 
       - name: Run analyzer
         id: analyzer
-        timeout-minutes: 8
+        timeout-minutes: 20
         env:
           SUBMISSION_ID: ${{ steps.sid.outputs.submission_id }}
           WORKER_URL: ${{ vars.WORKER_URL }}
