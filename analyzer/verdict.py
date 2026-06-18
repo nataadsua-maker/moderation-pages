@@ -57,7 +57,15 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
         # before-after — визуальный слой), идёт во flags
 
     # Layer 2 LLM — semantic Ad-to-Page / identity / promises / numbers. Tier 1.
+    # Ad-to-Page Match is one-way: мы судим КРЕО против ленда, ленд это эталон, а не объект
+    # нарушения. Если модель всё же вынесла вердикт «на ленд» (where=Lander / «лендинг не
+    # объясняет своё же предложение»), это мусор — мы ленд не модерируем. Режем такие, чтобы
+    # баер/модератор их не разгребали руками (как было на REQ-260612-018).
+    l2_lander_dropped = 0
     for v in l2_result.get("violations") or []:
+        if _is_lander_where(v.get("where", "")):
+            l2_lander_dropped += 1
+            continue
         violations.append({
             "where": v.get("where", ""),
             "title": v.get("title", ""),
@@ -115,6 +123,7 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
             "layer1_count": len([h for h in l1_hits if h["severity"] == "error"]),
             "layer2_count": len(l2_result.get("violations") or []),
             "numeric_count": len(numeric_hits or []),
+            "l2_lander_dropped": l2_lander_dropped,
             "visual_count": sum(len(v.get("frames_analysis", [])) for v in videos),
             "tier1_count": len([v for v in violations if v.get("tier") == TIER1]),
             "tier2_count": len([v for v in violations if v.get("tier") == TIER2]),
@@ -122,6 +131,18 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
             "confidence": confidence,
         },
     }
+
+
+def _is_lander_where(where: str) -> bool:
+    """True если нарушение нацелено на сам лендинг (а не на крео).
+
+    Ленд это эталон Ad-to-Page Match, не объект модерации. Нарушение с таким `where`
+    невалидно по определению и не должно доходить до баера/модератора.
+    """
+    w = (where or "").strip().lower()
+    if not w:
+        return False
+    return any(token in w for token in ("lander", "лендинг", "лэндер", "ленд", "целевая страниц"))
 
 
 def _visual_reason(t: str) -> str:
