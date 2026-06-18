@@ -39,12 +39,20 @@ jobs:
           cache: "pip"
           cache-dependency-path: analyzer/requirements.txt
 
+      # timeout-minutes здесь критичен: при зависании apt шаг ПАДАЕТ (failure),
+      # а не доводит job до 30-мин потолка с отменой (cancelled). Только при
+      # failure() срабатывает шаг "Report analysis failure" → заявка уходит в
+      # manual_review, а не виснет в pending_analysis навсегда.
       - name: Install ffmpeg
+        timeout-minutes: 5
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          timeout 240 sudo -E apt-get update
+          timeout 240 sudo -E apt-get install -y ffmpeg
 
       - name: Install Python deps
+        timeout-minutes: 5
         run: pip install -r analyzer/requirements.txt
 
       - name: Resolve submission id
