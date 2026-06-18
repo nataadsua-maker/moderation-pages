@@ -20,7 +20,13 @@ These four are the HIGHEST priority — be thorough, do not let them slip:
 A miss here is far worse than a miss on a minor wording issue.
 
 === GOLDEN RULES ===
-1. Ad-to-Page Match: every claim in the creative MUST be supported by the lander text. If the creative makes a claim not present on the lander → violation (section 2.1 / 4.4).
+1. Ad-to-Page Match: every claim in the CREATIVE must be supported by the lander text. If the creative makes a claim not present on the lander → violation (section 2.1 / 4.4).
+   DIRECTION IS STRICTLY ONE-WAY. The lander is the SOURCE OF TRUTH / reference — it is NEVER the thing under audit.
+   - We audit CREATIVE texts (Adtitle, Description, Button CTA, voiceover, плашки кадров) against the lander. We do NOT audit, judge, or moderate the lander itself.
+   - NEVER raise a violation whose `quote` is a sentence taken from the lander. The `quote` MUST be a phrase from the CREATIVE.
+   - NEVER ask to add/change/explain anything ON the lander (no "добавить на лендинг", no "лендинг не объясняет X"). `how_to_fix` must always change the CREATIVE.
+   - A statement that exists ONLY on the lander and is absent from the creative is NOT a violation — ignore it entirely.
+   - `where` for a 2.1 violation must always be a creative element, NEVER "Lander". Cite the lander only inside `reason` (e.g. "этого нет на лендинге").
 2. Identity misrepresentation: creative pretends to be employer / bank / govt / insurer when it is not (section 5.1.1).
 2b. Numbers (HIGH PRIORITY): every concrete number in the creative — money ($1,200, $50/mo), percent (50% off), counts ("3 things"), durations — MUST appear verbatim on the lander, and a testimonial number must not exceed the lander's maximum. The payload field `numeric_claims_detected` lists numbers a regex already spotted in the creative; for EACH one, confirm it is present verbatim on the lander. If absent or exceeded → violation (section 2.1). Treat the list as a checklist, but also catch numbers it missed.
 3. Testimonial rules:
@@ -46,7 +52,7 @@ STRICT JSON ONLY:
 {
   "violations": [
     {
-      "where": "<Adtitle | Description | Button CTA | Voiceover Video N | Plашка Video N MM:SS | Lander | system>",
+      "where": "<Adtitle | Description | Button CTA | Voiceover Video N | Плашка Video N MM:SS | system>",  // NEVER "Lander" — мы судим только крео, ленд это эталон
       "title": "<краткий заголовок нарушения, 2-5 слов, по-русски: напр. 'Прямой призыв к действию', 'Обещание, которого нет на лендинге'>",
       "quote": "<exact quote, в оригинале как на крео>",
       "quote_ru": "<перевод цитаты на русский; если цитата уже русская или это URL — повтори как есть>",
