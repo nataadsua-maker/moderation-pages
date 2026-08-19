@@ -44,20 +44,26 @@ jobs:
       # failure() срабатывает шаг "Report analysis failure" → заявка уходит в
       # manual_review, а не виснет в pending_analysis навсегда.
       - name: Install ffmpeg
-        timeout-minutes: 8
-        env:
-          DEBIAN_FRONTEND: noninteractive
+        timeout-minutes: 6
         run: |
-          # Зеркало azure.archive.ubuntu.com периодически отдаёт пакеты по 3-4 минуты
-          # (19.08.2026 на этом сгорело 23 прогона из 58). Ретраим и apt, и шаг целиком.
-          for i in 1 2 3; do
-            timeout 240 sudo -E apt-get -o Acquire::Retries=3 update \
-              && timeout 240 sudo -E apt-get -o Acquire::Retries=3 install -y ffmpeg \
-              && exit 0
-            echo "apt attempt $i failed, retry in 10s"
-            sleep 10
-          done
-          exit 1
+          # apt тут больше не жилец: зеркало azure.archive.ubuntu.com отдаёт пакеты
+          # по 3-4 минуты и валит шаг (19.08.2026 — 23 прогона из 58, плюс два подряд
+          # на перезапусках уже с ретраями). Ставим статическую сборку с GitHub
+          # (ffmpeg + ffprobe одним архивом, качается секунды), apt оставлен запасным.
+          set -e
+          URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+          if curl -fsSL --retry 3 --retry-delay 5 --max-time 180 -o /tmp/ffmpeg.tar.xz "$URL"; then
+            mkdir -p /tmp/ffmpeg
+            tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg --strip-components=1
+            sudo install -m 755 /tmp/ffmpeg/bin/ffmpeg /tmp/ffmpeg/bin/ffprobe /usr/local/bin/
+          else
+            echo "static build unavailable, fallback to apt"
+            export DEBIAN_FRONTEND=noninteractive
+            timeout 240 sudo -E apt-get -o Acquire::Retries=3 update
+            timeout 240 sudo -E apt-get -o Acquire::Retries=3 install -y ffmpeg
+          fi
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
 
       - name: Install Python deps
         timeout-minutes: 5
