@@ -81,7 +81,9 @@ def text_check(system_prompt: str, user_payload: str) -> dict:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_payload},
         ],
-        "max_tokens": 1500,
+        # Запас на reasoning-модели: у них видимый ответ идёт после длинного
+        # внутреннего рассуждения, и на 1500 JSON рискует обрезаться.
+        "max_tokens": int(os.environ.get("NIM_TEXT_MAX_TOKENS", "4000")),
         "temperature": 0.1,
         "response_format": {"type": "json_object"},
     }

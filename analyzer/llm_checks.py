@@ -103,6 +103,9 @@ def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: li
     try:
         return text_check(SYSTEM_PROMPT, json.dumps(payload, ensure_ascii=False))
     except Exception as e:
+        # Печатаем причину: без неё отказ модели виден только как «нужна ручная
+        # проверка» на карточке, и поломка стека молча живёт неделями (10-19.08).
+        print(f"  layer 2 LLM call failed: {e}")
         # FAIL-CLOSED: a crashed LLM call must NOT silently approve. The Ad-to-Page /
         # identity / promises / numbers checks are top priority — if we couldn't run
         # them, force the submission to a human instead of letting it pass.
