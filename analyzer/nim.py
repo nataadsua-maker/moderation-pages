@@ -9,8 +9,18 @@ from pathlib import Path
 import requests
 
 NIM_BASE = "https://integrate.api.nvidia.com/v1"
-VISION_MODEL = "meta/llama-3.2-90b-vision-instruct"
-TEXT_MODEL = "meta/llama-3.3-70b-instruct"
+# Модели вынесены в env: когда NVIDIA перестаёт отдавать конкретную модель, свап
+# делается переменной в moderate.yml, без правки кода и релиза.
+# 10.08.2026 llama-3.2-90b-vision перестала отвечать на наш ключ (запрос висит до
+# таймаута вместо ошибки, мелкие модели при этом отвечают за секунды) → vision
+# переведён на 11b. Вернуть 90B можно одной переменной, когда она оживёт.
+VISION_MODEL = os.environ.get("NIM_VISION_MODEL", "meta/llama-3.2-11b-vision-instruct")
+TEXT_MODEL = os.environ.get("NIM_TEXT_MODEL", "meta/llama-3.3-70b-instruct")
+
+# Зависшая модель не должна съедать бюджет шага: 3 ретрая по 120с = 6 минут на
+# ОДИН кадр, и 20-минутный timeout-minutes выгорает на второй-третьей картинке.
+VISION_TIMEOUT = int(os.environ.get("NIM_VISION_TIMEOUT", "45"))
+VISION_RETRIES = int(os.environ.get("NIM_VISION_RETRIES", "2"))
 
 
 def _headers() -> dict[str, str]:
@@ -57,7 +67,7 @@ def vision_describe_frame(frame_path: Path, question: str) -> str:
         "max_tokens": 800,
         "temperature": 0.2,
     }
-    data = _post_chat(payload)
+    data = _post_chat(payload, timeout=VISION_TIMEOUT, retries=VISION_RETRIES)
     return data["choices"][0]["message"]["content"].strip()
 
 

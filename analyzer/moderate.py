@@ -34,6 +34,10 @@ import video as video_mod
 import visual
 
 
+# Доля кадров, которые допустимо не разобрать и всё же выдать вердикт.
+VISION_FAILURE_LIMIT = float(os.environ.get("VISION_FAILURE_LIMIT", "0.3"))
+
+
 def run(submission_id: str) -> None:
     print(f"[1/9] Fetching submission {submission_id}")
     sub = api_client.fetch_submission(submission_id)
@@ -96,6 +100,19 @@ def run(submission_id: str) -> None:
             n = len(v["frames"])
             print(f"  asset {i+1}: vision analyze {n} frame{'s' if n != 1 else ''}")
             v["frames_analysis"] = visual.analyze_video_frames(v["frames"])
+
+        # Vision мог тихо отвалиться на всех кадрах (так было при отказе NIM 10-19.08):
+        # тогда пустой OCR читается дальше как «на кадрах ничего запрещённого нет», и
+        # заявка одобряется, хотя ролик никто не смотрел. Лучше честно отдать модератору:
+        # падаем → шаг Report analysis failure переводит заявку в manual_review.
+        st = visual.vision_stats()
+        if st["attempted"] and st["failed"] / st["attempted"] > VISION_FAILURE_LIMIT:
+            raise RuntimeError(
+                f"vision недоступен: не разобрано {st['failed']} из {st['attempted']} кадров "
+                f"(порог {int(VISION_FAILURE_LIMIT * 100)}%) — вердикт без просмотра кадров не выдаём"
+            )
+        if st["failed"]:
+            print(f"  vision: пропущено {st['failed']} из {st['attempted']} кадров (в пределах порога)")
 
         # Mark subtitle-style OCR (duplicates voiceover) so the report only shows real plашки.
         subtitle_filter.annotate_frames(videos)

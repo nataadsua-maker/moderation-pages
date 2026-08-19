@@ -4,6 +4,7 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Lock
 
 from nim import vision_describe_frame
 from video import format_ts
@@ -16,6 +17,27 @@ from video import format_ts
 # flaky frame degrades gracefully. Videos themselves stay sequential to keep total
 # concurrency = VISION_CONCURRENCY, not VISION_CONCURRENCY × n_videos.
 VISION_CONCURRENCY = int(os.environ.get("VISION_CONCURRENCY", "4"))
+
+
+# Пропущенный кадр = кадр, который никто не посмотрел. Пустой OCR при этом
+# неотличим от «на кадре ничего нет», поэтому при массовом отказе vision вердикт
+# «нарушений не видно» ничего не значит (так 10-19.08 заявки одобрялись вслепую).
+# Считаем долю непрочитанных кадров, решение принимает moderate.py.
+_STATS = {"attempted": 0, "failed": 0}
+_STATS_LOCK = Lock()
+
+
+def _count(failed: bool) -> None:
+    with _STATS_LOCK:
+        _STATS["attempted"] += 1
+        if failed:
+            _STATS["failed"] += 1
+
+
+def vision_stats() -> dict:
+    """{'attempted': N, 'failed': M} за весь прогон."""
+    with _STATS_LOCK:
+        return dict(_STATS)
 
 
 VISION_PROMPT = """You analyze a single frame from an advertising video for RSOC policy compliance.
@@ -105,13 +127,19 @@ def analyze_frame(frame_path: Path) -> dict:
         raw = vision_describe_frame(frame_path, VISION_PROMPT)
     except Exception as e:
         print(f"  vision failed for {frame_path} (skipping frame): {e}")
+        _count(failed=True)
         return {"ocr_text": "", "visual_violations": []}
     # Extract JSON (model may add prose around it)
     try:
         start = raw.find("{")
         end = raw.rfind("}") + 1
-        return json.loads(raw[start:end])
+        out = json.loads(raw[start:end])
+        _count(failed=False)
+        return out
     except Exception:
+        # Модель ответила, но не JSON — кадр так же остался непрочитанным.
+        print(f"  vision returned non-JSON for {frame_path} (skipping frame)")
+        _count(failed=True)
         return {"ocr_text": "", "visual_violations": [], "_raw": raw[:500]}
 
 
