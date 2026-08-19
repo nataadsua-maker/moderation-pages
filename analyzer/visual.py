@@ -1,12 +1,11 @@
 """Per-frame visual analysis: OCR plашек + visual policy + 18+ detection."""
 from __future__ import annotations
-import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 
-from nim import vision_describe_frame
+from nim import text_check, vision_describe_frame
 from video import format_ts
 
 
@@ -40,7 +39,31 @@ def vision_stats() -> dict:
         return dict(_STATS)
 
 
-VISION_PROMPT = """You analyze a single frame from an advertising video for RSOC policy compliance.
+# Кадр разбирается в два шага. Рабочая на NIM vision-модель (llama-3.2-11b) описывает
+# картинку прилично, но строгий JSON не отдаёт ни при каком промпте и даже в
+# response_format=json_object — отвечает прозой. Поэтому: vision описывает кадр
+# словами (DESCRIBE_PROMPT), а полиси применяет текстовая модель (CLASSIFY_PROMPT),
+# у которой JSON-режим работает. Описание просим сразу под нужные признаки, иначе
+# классификатору будет не за что зацепиться.
+DESCRIBE_PROMPT = """Describe this frame from an advertising video for a compliance reviewer.
+
+1. Transcribe ALL on-screen text verbatim, exactly as written, in a section "ON-SCREEN TEXT:".
+   If there is no text, write "ON-SCREEN TEXT: none".
+2. In a section "SCENE:", describe what is shown: people (clothing, pose, how much skin is
+   visible, whether the framing is sexualized), objects, setting, product.
+3. In a section "OVERLAYS:", list any graphics drawn ON TOP of the footage: arrows, circles or
+   highlights pointing at something; buttons; search fields; lists of search results; text
+   banners. For each say whether it looks like a real part of a shown app/website or an
+   overlay added by the advertiser.
+4. In a section "NOTABLE:", mention if you see any of: side-by-side before/after comparison,
+   nudity or sexual content, injuries/blood/shocking imagery, weapons, gambling (casino, slots,
+   betting), politicians or political symbols, drugs, alcohol.
+
+Be literal and factual. Describe only what is actually visible, do not guess intent."""
+
+
+CLASSIFY_PROMPT = """You judge a DESCRIPTION of a single frame from an advertising video for RSOC policy compliance.
+You cannot see the image — rely ONLY on what the description states, never invent details.
 
 TWO DIFFERENT STANDARDS APPLY depending on the violation type:
 
@@ -117,30 +140,28 @@ Violation types and STRICT criteria:
   When unsure whether a frame crosses the line — FLAG IT.
 
 If nothing genuinely violates: return empty visual_violations array.
-ocr_text must be the actual text visible on screen, not your description of the image."""
+ocr_text must be the on-screen text quoted in the description (the "ON-SCREEN TEXT" section),
+verbatim and nothing else — not the description itself. If it says there is no text, return ""."""
 
 
 def analyze_frame(frame_path: Path) -> dict:
     # A flaky vision call on one frame must NOT abort the whole submission —
     # skip the frame (no OCR / no visual violations) and let the verdict complete.
+    # Кадр без разбора считается непрочитанным (_count) — см. vision_stats().
     try:
-        raw = vision_describe_frame(frame_path, VISION_PROMPT)
+        description = vision_describe_frame(frame_path, DESCRIBE_PROMPT)
     except Exception as e:
         print(f"  vision failed for {frame_path} (skipping frame): {e}")
         _count(failed=True)
         return {"ocr_text": "", "visual_violations": []}
-    # Extract JSON (model may add prose around it)
     try:
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        out = json.loads(raw[start:end])
-        _count(failed=False)
-        return out
-    except Exception:
-        # Модель ответила, но не JSON — кадр так же остался непрочитанным.
-        print(f"  vision returned non-JSON for {frame_path} (skipping frame)")
+        out = text_check(CLASSIFY_PROMPT, description)
+    except Exception as e:
+        print(f"  policy classify failed for {frame_path} (skipping frame): {e}")
         _count(failed=True)
-        return {"ocr_text": "", "visual_violations": [], "_raw": raw[:500]}
+        return {"ocr_text": "", "visual_violations": [], "_raw": description[:500]}
+    _count(failed=False)
+    return out
 
 
 def analyze_video_frames(frames: list[dict]) -> list[dict]:

@@ -14,8 +14,10 @@ NIM_BASE = "https://integrate.api.nvidia.com/v1"
 # 10.08.2026 llama-3.2-90b-vision перестала отвечать на наш ключ (запрос висит до
 # таймаута вместо ошибки, мелкие модели при этом отвечают за секунды) → vision
 # переведён на 11b. Вернуть 90B можно одной переменной, когда она оживёт.
+# llama-3.3-70b в те же дни отвечает через раз (503 / таймаут), поэтому текстовые
+# проверки переведены на nemotron-3-super-120b: отвечает за 1-15с и держит JSON-режим.
 VISION_MODEL = os.environ.get("NIM_VISION_MODEL", "meta/llama-3.2-11b-vision-instruct")
-TEXT_MODEL = os.environ.get("NIM_TEXT_MODEL", "meta/llama-3.3-70b-instruct")
+TEXT_MODEL = os.environ.get("NIM_TEXT_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
 # Зависшая модель не должна съедать бюджет шага: 3 ретрая по 120с = 6 минут на
 # ОДИН кадр, и 20-минутный timeout-minutes выгорает на второй-третьей картинке.
