@@ -22,8 +22,13 @@ STOP_WORD_RULES = [
      "hint": "Claim — запрещённый CTA"},
     {"id": "shop_buy", "pattern": r"\b(shop|buy) (now|here)\b", "section": "2.4", "severity": "error",
      "hint": "Shop/Buy Now — запрещённый CTA"},
+    # Правило Nataliia (24.08.2026): на Newsbreak такой CTA пропускаем ВНУТРИ
+    # ролика (озвучка, плашки на кадрах). В Adtitle и Description он остаётся
+    # нарушением, как и на остальных сорсах. Button CTA сюда не относится —
+    # он выбирается из allowlist (BUTTON_CTA_ALLOWLIST в воркере).
     {"id": "click_tap_search_here", "pattern": r"\b(click here|tap (here|below|to)|search here)\b",
-     "section": "2.3, 2.4", "severity": "error", "hint": "Click/Tap/Search Here — запрещённый CTA"},
+     "section": "2.3, 2.4", "severity": "error", "hint": "Click/Tap/Search Here — запрещённый CTA",
+     "media_exempt_sources": ["nb"]},
     {"id": "dollar_amount", "pattern": r"\$\d|\d+\s*(dollars|usd|/mo|per month|/yr)",
      "section": "2.3", "severity": "warn",
      "hint": "цифра/сумма — проверим что дословно есть на ленде"},
@@ -56,11 +61,29 @@ STOP_WORD_RULES = [
 ]
 
 
-def scan_text(text: str, where: str) -> list[dict]:
+def norm_platform(p: str | None) -> str:
+    """Сорс залива к актуальному набору. Legacy-значения (`newsbreak_only`,
+    `all_sources`) лежат в старых заявках — воркер нормализует их на входе,
+    но анализатор читает и архивные записи."""
+    if p == "newsbreak_only":
+        return "nb"
+    if p == "all_sources":
+        return "other"
+    return p if p in ("nb", "fb", "tt", "other") else "other"
+
+
+def scan_text(text: str, where: str, platform: str | None = None,
+              in_media: bool = False) -> list[dict]:
+    """`in_media` = текст взят из самого ролика (озвучка или плашка на кадре),
+    а не из полей объявления. Часть правил на отдельных сорсах внутри ролика не
+    действует — см. `media_exempt_sources`."""
     if not text:
         return []
+    src = norm_platform(platform)
     hits = []
     for rule in STOP_WORD_RULES:
+        if in_media and src in rule.get("media_exempt_sources", []):
+            continue
         for m in re.finditer(rule["pattern"], text, re.IGNORECASE):
             hits.append({
                 "where": where,

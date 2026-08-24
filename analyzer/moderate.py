@@ -119,6 +119,7 @@ def run(submission_id: str) -> None:
 
         print("[5/9] Layer 1 regex scan (creative only — lander is partner's responsibility)")
         l1: list[dict] = []
+        src = text_policy.norm_platform(sub.get("platform"))
         l1 += text_policy.scan_text(sub["adtitle"], "Adtitle")
         l1 += text_policy.scan_text(sub["description"], "Description")
         l1 += text_policy.scan_text(sub["button_cta"], "Button CTA")
@@ -126,14 +127,17 @@ def run(submission_id: str) -> None:
         # We only fetch the lander to feed it as context to Layer 2 LLM for Ad-to-Page Match.
         for v_idx, v in enumerate(videos):
             label = "Картинка" if v.get("kind") == "image" else "Видео"
+            # in_media=True: тексты из самого ролика. Часть правил на отдельных
+            # сорсах здесь не действует (на nb пропускаем Click/Tap/Search Here),
+            # тогда как в Adtitle/Description выше они в силе на всех сорсах.
             for seg in v["transcript"]["segments"]:
                 where = f"{label} {v_idx+1}, {_fmt_ts(seg['start'])} озвучка"
-                l1 += text_policy.scan_text(seg["text"], where)
+                l1 += text_policy.scan_text(seg["text"], where, platform=src, in_media=True)
             for fr in v["frames_analysis"]:
                 if fr["ocr_text"] and not fr.get("is_subtitle"):
                     suffix = "плашка" if v.get("kind") != "image" else "текст"
                     where = f"{label} {v_idx+1}" + (f", {fr['ts']} {suffix}" if v.get("kind") != "image" else f", {suffix}")
-                    l1 += text_policy.scan_text(fr["ocr_text"], where)
+                    l1 += text_policy.scan_text(fr["ocr_text"], where, platform=src, in_media=True)
         print(f"  layer 1 hits: {len(l1)}")
 
         # Collect creative + media text for the numeric Ad-to-Page checks (Tier 1).
@@ -175,7 +179,7 @@ def run(submission_id: str) -> None:
             }
             print(f"  layer 2 SKIPPED — lander unreachable, forcing manual_review")
         else:
-            l2 = llm_checks.check(sub, lander, videos, numeric_claims=numeric_claims)
+            l2 = llm_checks.check(sub, lander, videos, numeric_claims=numeric_claims, platform=src)
             print(f"  layer 2 violations: {len(l2.get('violations') or [])}")
 
         # Tier-1 deterministic numeric backstop — only when the lander is actually

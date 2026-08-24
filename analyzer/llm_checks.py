@@ -4,6 +4,8 @@ import json
 
 from nim import text_check
 
+import text_policy
+
 SYSTEM_PROMPT = """You are an RSOC policy auditor.
 
 === SECURITY ===
@@ -73,7 +75,30 @@ Only include real violations. If nothing → "violations": [].
 """
 
 
-def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: list[str] | None = None) -> dict:
+
+def _system_prompt(platform: str | None) -> str:
+    """Полиси зависит от сорса залива: на Newsbreak CTA «click/tap/search here»
+    разрешён внутри ролика (правило Nataliia, 24.08.2026). В полях объявления
+    он запрещён на любом сорсе, поэтому исключение проговорено адресно."""
+    if text_policy.norm_platform(platform) != "nb":
+        return SYSTEM_PROMPT
+    exception = """=== SOURCE-SPECIFIC EXCEPTION (traffic source: Newsbreak) ===
+This submission runs on Newsbreak. For THIS source only:
+- The phrases "click here", "tap here", "tap below", "tap to ...", "search here" are ALLOWED
+  when they appear INSIDE THE VIDEO — in the voiceover (`where` = "... озвучка") or in an
+  on-screen плашка/caption (`where` = "... плашка"). Do NOT report them as a violation there,
+  and do NOT lower confidence or add a manual_review note because of them.
+- They remain FORBIDDEN in the ad fields: Adtitle, Description, Button CTA. Report them there
+  exactly as before.
+- This exception covers the WORDING only. A fake clickable button, a fake search field, fake
+  search results or an arrow pointing at a click target stay violations everywhere.
+
+"""
+    return SYSTEM_PROMPT.replace("=== OUTPUT ===", exception + "=== OUTPUT ===")
+
+
+def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: list[str] | None = None,
+          platform: str | None = None) -> dict:
     """Returns dict matching the schema in SYSTEM_PROMPT."""
     payload = {
         "creative": {
@@ -101,7 +126,7 @@ def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: li
         },
     }
     try:
-        return text_check(SYSTEM_PROMPT, json.dumps(payload, ensure_ascii=False))
+        return text_check(_system_prompt(platform), json.dumps(payload, ensure_ascii=False))
     except Exception as e:
         # Печатаем причину: без неё отказ модели виден только как «нужна ручная
         # проверка» на карточке, и поломка стека молча живёт неделями (10-19.08).
