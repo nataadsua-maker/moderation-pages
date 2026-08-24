@@ -1,4 +1,10 @@
-"""Layer 1 regex scan. Mirrors worker/src/policy_rules.ts."""
+"""Layer 1 regex scan. Mirrors worker/src/policy_rules.ts.
+
+⚠️ Одно расхождение намеренное: `media_exempt_sources` у click_tap_search_here
+живёт только здесь. Воркер сканирует Adtitle и Description (там запрет в силе на
+всех сорсах), а тексты внутри ролика видит только анализатор — переносить это
+поле в policy_rules.ts не нужно и вредно.
+"""
 from __future__ import annotations
 import re
 
