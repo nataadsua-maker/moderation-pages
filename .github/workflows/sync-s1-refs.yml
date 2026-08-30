@@ -1,0 +1,34 @@
+name: sync-s1-refs
+
+# Тянет справочники System1 из Google-таблиц в Cloudflare KV:
+#   s1_buyers   — ник → s1pagid по сорсам, воркспейс, домен
+#   s1_segments — домен ленда → сегмент по сорсам + статус домена
+# Их читает сервис модерации при заведении связки в трекер.
+
+on:
+  schedule:
+    - cron: "20 5 * * *" # раз в сутки, 05:20 UTC (~08:20 Киев), после ростера
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install google-api-python-client google-auth openpyxl
+      - name: Sync S1 references
+        env:
+          GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SA_JSON }}
+          S1_BUYERS_SHEET_ID: ${{ vars.S1_BUYERS_SHEET_ID }}
+          S1_SEGMENTS_SHEET_ID: ${{ vars.S1_SEGMENTS_SHEET_ID }}
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE: ${{ vars.CF_KV_NAMESPACE }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: python -u analyzer/sync_s1_refs.py
