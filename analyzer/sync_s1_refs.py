@@ -13,6 +13,7 @@ Two tables, two KV keys:
 from __future__ import annotations
 import io
 import json
+import re
 import os
 import sys
 import urllib.request
@@ -102,6 +103,7 @@ def parse_buyers(wb) -> dict:
         ci_nick = col_index(header, "Ник (нейминг)")
         ci_ws = col_index(header, "Воркспейс")
         ci_dom = col_index(header, "Домен по умолчанию")
+        ci_sn = col_index(header, "Источник SN")
         out: dict = {}
         for row in rows[h + 1:]:
             nick = cell(row, ci_nick)
@@ -119,6 +121,9 @@ def parse_buyers(wb) -> dict:
                 print(f"  ⚠ {nick}: неизвестный воркспейс «{ws_name}» — id не проставлен")
             if dom_name and dom_name not in DOMAIN_IDS:
                 print(f"  ⚠ {nick}: неизвестный домен «{dom_name}» — id не проставлен")
+            sn_id = cell(row, ci_sn)
+            if sn_id and not re.fullmatch(r"[0-9a-f]{24}", sn_id):
+                print(f"  ⚠ {nick}: «Источник SN» не похож на id трекера: {sn_id}")
             if dom_name in LEGACY_DOMAINS:
                 print(f"  ⚠ {nick}: домен «{dom_name}» легаси, новое на нём не запускаем")
             out[nick.lower()] = {
@@ -128,6 +133,8 @@ def parse_buyers(wb) -> dict:
                 "workspaceId": WORKSPACE_IDS.get(ws_name),
                 "domain": dom_name or None,
                 "domainId": DOMAIN_IDS.get(dom_name),
+                # Персональный источник SmartNews: в таблице лежит id из трекера.
+                "snSourceId": (cell(row, ci_sn) or None),
             }
         print(f"баеры: вкладка «{name}», строк {len(out)}")
         return out
