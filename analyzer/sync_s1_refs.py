@@ -104,6 +104,8 @@ def parse_buyers(wb) -> dict:
         ci_ws = col_index(header, "Воркспейс")
         ci_dom = col_index(header, "Домен по умолчанию")
         ci_sn = col_index(header, "Источник SN")
+        # Ник в ростере — ключ поиска. Пусто = совпадает с ником для нейминга.
+        ci_rn = col_index(header, "Ник в ростере")
         out: dict = {}
         for row in rows[h + 1:]:
             nick = cell(row, ci_nick)
@@ -126,8 +128,10 @@ def parse_buyers(wb) -> dict:
                 print(f"  ⚠ {nick}: «Источник SN» не похож на id трекера: {sn_id}")
             if dom_name in LEGACY_DOMAINS:
                 print(f"  ⚠ {nick}: домен «{dom_name}» легаси, новое на нём не запускаем")
-            out[nick.lower()] = {
+            roster_nick = cell(row, ci_rn) or nick
+            out[roster_nick.lower()] = {
                 "nick": nick,
+                "rosterNick": roster_nick,
                 "pagid": pagid,
                 "workspace": ws_name or None,
                 "workspaceId": WORKSPACE_IDS.get(ws_name),
@@ -195,7 +199,7 @@ def check_against_roster(buyers: dict) -> None:
         return
     active = {(v.get("trackerNick") or "").strip().lower()
               for v in roster.values() if (v.get("trackerNick") or "").strip()}
-    stale = sorted(b["nick"] for k, b in buyers.items() if k not in active)
+    stale = sorted(b.get("rosterNick") or b["nick"] for k, b in buyers.items() if k not in active)
     missing = sorted(n for n in active if n not in buyers)
     if stale:
         print(f"  ⚠ строк нет в активном ростере (уволены или другое написание): {', '.join(stale)}")
