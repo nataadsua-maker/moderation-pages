@@ -174,6 +174,37 @@ def parse_segments(wb) -> dict:
     sys.exit("сегменты: не нашла вкладку с колонками «System1» и «сегменты»")
 
 
+def kv_get(key: str):
+    acc = os.environ["CF_ACCOUNT_ID"]
+    tok = os.environ["CF_API_TOKEN"]
+    ns = os.environ["CF_KV_NAMESPACE"]
+    url = f"https://api.cloudflare.com/client/v4/accounts/{acc}/storage/kv/namespaces/{ns}/values/{key}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+    try:
+        return json.loads(urllib.request.urlopen(req).read().decode())
+    except Exception:
+        return None
+
+
+def check_against_roster(buyers: dict) -> None:
+    """Сверка с ростером: сервис ищет баера по нику оттуда, поэтому расхождение
+    в написании = запуск отобьётся. Ловим здесь, а не при первом запуске."""
+    roster = kv_get("roster")
+    if not isinstance(roster, dict) or not roster:
+        print("  сверка с ростером пропущена: ростер в KV не найден")
+        return
+    active = {(v.get("trackerNick") or "").strip().lower()
+              for v in roster.values() if (v.get("trackerNick") or "").strip()}
+    stale = sorted(b["nick"] for k, b in buyers.items() if k not in active)
+    missing = sorted(n for n in active if n not in buyers)
+    if stale:
+        print(f"  ⚠ строк нет в активном ростере (уволены или другое написание): {', '.join(stale)}")
+    if missing:
+        print(f"  строк в таблице нет, но баер в ростере есть: {', '.join(missing)}")
+    if not stale and not missing:
+        print("  сверка с ростером: расхождений нет")
+
+
 def kv_put(key: str, value: dict) -> None:
     acc = os.environ["CF_ACCOUNT_ID"]
     tok = os.environ["CF_API_TOKEN"]
@@ -192,6 +223,7 @@ def kv_put(key: str, value: dict) -> None:
 def main() -> None:
     drive = drive_client()
     buyers = parse_buyers(load_book(drive, os.environ["S1_BUYERS_SHEET_ID"], "баеры"))
+    check_against_roster(buyers)
     segments = parse_segments(load_book(drive, os.environ["S1_SEGMENTS_SHEET_ID"], "сегменты"))
     kv_put("s1_buyers", buyers)
     kv_put("s1_segments", segments)
