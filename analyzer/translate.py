@@ -1,10 +1,13 @@
-"""Batch translate short EN strings to RU via NIM Llama 70B."""
+"""Batch translate short strings to RU via NIM Llama 70B (язык оригинала любой)."""
 from __future__ import annotations
 import json
 
 from nim import text_check
 
-SYSTEM_PROMPT = """You are a translator. Translate the given list of English strings into Russian.
+SYSTEM_PROMPT = """You are a translator. Translate the given list of strings into Russian.
+
+The source language may be ANY language — English, Japanese, Spanish, Thai and so on.
+The target is ALWAYS Russian, never mirror the source language.
 
 Rules:
 - Output a JSON object: {"translations": ["ru1", "ru2", ...]}

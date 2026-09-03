@@ -75,11 +75,14 @@ TWO DIFFERENT STANDARDS APPLY depending on the violation type:
   category. When in doubt — DO flag. It is far better to send a borderline frame to a human
   than to let 18+ content slip through. Recall matters more than precision here.
 
+Поле detail пишем ПО-РУССКИ всегда, каким бы ни был язык кадра и крео: его читает
+русскоязычный баер. ocr_text, наоборот, цитируем дословно в языке оригинала.
+
 Return STRICT JSON only:
 {
   "ocr_text": "exact text overlay visible on this frame (captions/plашки), or empty string",
   "visual_violations": [
-    // each item: {"type": "<code>", "detail": "<≤80 chars, what specifically is wrong>"}
+    // each item: {"type": "<code>", "detail": "<до 80 символов, ПО-РУССКИ, что именно не так>"}
   ]
 }
 
