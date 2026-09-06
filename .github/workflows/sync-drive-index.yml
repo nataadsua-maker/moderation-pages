@@ -1,0 +1,32 @@
+name: sync-drive-index
+
+# Складывает карту «заявка → папка с крео в Google Drive» в KV (ключ `drive_index`).
+# Крео в R2 живут 3 дня, в Drive — вечно: кабинет по этому индексу показывает ссылку
+# на архивные крео у заявок, чьи видео уже удалены.
+
+on:
+  schedule:
+    - cron: "30 5 * * *" # раз в сутки, после архивации ночных заявок
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install google-api-python-client google-auth
+      - name: Sync drive index
+        env:
+          GOOGLE_DRIVE_SA_JSON: ${{ secrets.GOOGLE_DRIVE_SA_JSON }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ vars.GOOGLE_DRIVE_FOLDER_ID }}
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE: ${{ vars.CF_KV_NAMESPACE }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: python -u analyzer/sync_drive_index.py
