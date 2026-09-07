@@ -63,7 +63,10 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
     # баер/модератор их не разгребали руками (как было на REQ-260612-018).
     l2_lander_dropped = 0
     for v in l2_result.get("violations") or []:
-        if _is_lander_where(v.get("where", "")):
+        # Служебный сигнал «ленд недоступен / сбой проверки» тоже указывает на ленд,
+        # но это не суждение о нём, а просьба к модератору. Его резать нельзя:
+        # вырежем — нарушений не останется, и заявка молча уйдёт в approve.
+        if v.get("policy_section") != "manual_review" and _is_lander_where(v.get("where", "")):
             l2_lander_dropped += 1
             continue
         violations.append({

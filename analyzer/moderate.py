@@ -38,6 +38,127 @@ import visual
 VISION_FAILURE_LIMIT = float(os.environ.get("VISION_FAILURE_LIMIT", "0.3"))
 
 
+# Копия связки из архива (крео вычищено из R2, озвучка и плашки перенеслись из
+# исходной заявки). Такую заявку проверяем ТОЛЬКО на соответствие ленду: остальную
+# полиси на этих текстах уже отсудили на исходной заявке, а кадров, чтобы судить
+# визуал, нет вовсе. Правило Nataliia. 2.1/4.4 — это и есть Ad-to-Page Match,
+# manual_review оставляем: так модель говорит «сама не уверена».
+RELEVANCE_SECTIONS = {"2.1", "4.4", "manual_review"}
+
+
+def numeric_sources_of(sub: dict, videos: list[dict]) -> list[tuple[str, str]]:
+    """Тексты крео, в которых ищем числа для Ad-to-Page проверки."""
+    out: list[tuple[str, str]] = [
+        ("Adtitle", sub["adtitle"]),
+        ("Description", sub["description"]),
+        ("Button CTA", sub["button_cta"]),
+    ]
+    for v_idx, v in enumerate(videos):
+        label = "Картинка" if v.get("kind") == "image" else "Видео"
+        for seg in v["transcript"]["segments"]:
+            out.append((f"{label} {v_idx+1}, {_fmt_ts(seg['start'])} озвучка", seg["text"]))
+        for fr in v["frames_analysis"]:
+            if fr["ocr_text"] and not fr.get("is_subtitle"):
+                out.append((f"{label} {v_idx+1}, {fr['ts']}", fr["ocr_text"]))
+    return out
+
+
+def layer2_check(sub: dict, lander: dict, videos: list[dict],
+                 numeric_claims: list[str], src: str | None) -> dict:
+    """Layer 2 с общей страховкой: недоступный ленд = ручная проверка, не аппрув."""
+    lander_text_len = len(lander.get("text", "") or "")
+    if not lander.get("ok", False) or lander_text_len < 200:
+        print("  layer 2 SKIPPED — lander unreachable, forcing manual_review")
+        return {
+            "violations": [{
+                # НЕ «Lander»: verdict.assemble режет нарушения, нацеленные на ленд.
+                "where": "Проверка соответствия",
+                "quote": lander.get("url", ""),
+                "reason": (
+                    f"Ленд недоступен или содержит мало контента ({lander_text_len} симв.) — "
+                    f"соответствие ленду нужно проверить вручную."
+                ),
+                "policy_section": "manual_review",
+                "category": "standard",
+            }],
+            "confidence": 0.0,
+            "_skipped": "lander_unavailable",
+        }
+    l2 = llm_checks.check(sub, lander, videos, numeric_claims=numeric_claims, platform=src)
+    print(f"  layer 2 violations: {len(l2.get('violations') or [])}")
+    return l2
+
+
+def videos_from_media_analysis(media: list[dict]) -> list[dict]:
+    """Разбор крео из исходной заявки → та же структура, что строит медиа-пайплайн."""
+    out: list[dict] = []
+    for a in media or []:
+        segs = a.get("transcript_segments") or []
+        out.append({
+            "key": a.get("key", ""),
+            "kind": a.get("kind", "video"),
+            "transcript": {
+                "full_text": " ".join((s.get("text_en") or "").strip() for s in segs).strip(),
+                "segments": [
+                    {"start": s.get("start", 0), "end": s.get("end", 0), "text": s.get("text_en", "")}
+                    for s in segs
+                ],
+            },
+            "frames": [],
+            "frames_analysis": [
+                {
+                    "ts": o.get("ts", ""),
+                    "ts_sec": o.get("ts_sec", 0),
+                    "ocr_text": o.get("text_en", ""),
+                    "is_subtitle": bool(o.get("is_subtitle")),
+                    "visual_violations": [],
+                }
+                for o in (a.get("overlays") or [])
+            ],
+        })
+    return out
+
+
+def run_archive_copy(sub: dict, lander: dict) -> None:
+    """Копия из архива: одна проверка, связка против ленда."""
+    media = sub.get("media_analysis") or []
+    videos = videos_from_media_analysis(media)
+    print(f"[2/4] Разбор крео из исходной заявки: {len(videos)} шт.")
+
+    numeric_sources = numeric_sources_of(sub, videos)
+    numeric_claims: list[str] = []
+    for _, txt in numeric_sources:
+        numeric_claims += text_policy.extract_money_claims(txt)
+
+    print("[3/4] Проверка соответствия ленду")
+    src = text_policy.norm_platform(sub.get("platform"))
+    l2 = layer2_check(sub, lander, videos, numeric_claims, src)
+    kept = [v for v in (l2.get("violations") or [])
+            if v.get("policy_section") in RELEVANCE_SECTIONS]
+    dropped = len(l2.get("violations") or []) - len(kept)
+    if dropped:
+        print(f"  вне проверки соответствия отброшено: {dropped}")
+    l2 = {**l2, "violations": kept}
+
+    numeric_hits: list[dict] = []
+    if lander.get("ok") and len(lander.get("text", "") or "") >= 200:
+        numeric_hits = text_policy.check_numeric_claims(numeric_sources, lander.get("text", ""))
+        print(f"  numeric backstop hits: {len(numeric_hits)}")
+
+    # Layer 1 (стоп-слова) и визуал не гоняем: проверяем только соответствие ленду.
+    v = verdict_mod.assemble(sub, [], l2, videos, numeric_hits=numeric_hits)
+    print(f"  overall={v['overall']} violations={len(v['violations'])}")
+
+    print("[4/4] POST verdict to Worker")
+    worker_url = os.environ["WORKER_URL"]
+    page_url = f"{worker_url}/sub/{sub['id']}"
+    notify = os.environ.get("SILENT", "").lower() not in ("1", "true", "yes")
+    # media_analysis шлём тот же, что и пришёл: у копии он унаследован от исходной
+    # заявки, и пустой список его бы затёр.
+    api_client.post_verdict(sub["id"], v, page_url, media, notify=notify)
+    print(f"  done (notify={notify})")
+
+
 def run(submission_id: str) -> None:
     print(f"[1/9] Fetching submission {submission_id}")
     sub = api_client.fetch_submission(submission_id)
@@ -46,6 +167,12 @@ def run(submission_id: str) -> None:
     print("[2/9] Fetching lander")
     lander = lander_mod.fetch(sub["lander_url"])
     print(f"  ok={lander['ok']} title={lander.get('title', '')[:80]!r}")
+
+    # У копии из архива своих файлов нет: скачивать, резать на кадры и смотреть
+    # видео не на чем, поэтому уходим в короткую ветку с одной проверкой.
+    if not sub.get("video_keys"):
+        run_archive_copy(sub, lander)
+        return
 
     print(f"[3-4/9] Processing {len(sub['video_keys'])} assets")
     IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -141,50 +268,19 @@ def run(submission_id: str) -> None:
         print(f"  layer 1 hits: {len(l1)}")
 
         # Collect creative + media text for the numeric Ad-to-Page checks (Tier 1).
-        numeric_sources: list[tuple[str, str]] = [
-            ("Adtitle", sub["adtitle"]),
-            ("Description", sub["description"]),
-            ("Button CTA", sub["button_cta"]),
-        ]
-        for v_idx, v in enumerate(videos):
-            label = "Картинка" if v.get("kind") == "image" else "Видео"
-            for seg in v["transcript"]["segments"]:
-                numeric_sources.append((f"{label} {v_idx+1}, {_fmt_ts(seg['start'])} озвучка", seg["text"]))
-            for fr in v["frames_analysis"]:
-                if fr["ocr_text"] and not fr.get("is_subtitle"):
-                    numeric_sources.append((f"{label} {v_idx+1}, {fr['ts']}", fr["ocr_text"]))
+        numeric_sources = numeric_sources_of(sub, videos)
         numeric_claims: list[str] = []
         for _, txt in numeric_sources:
             numeric_claims += text_policy.extract_money_claims(txt)
 
         print("[6/9] Layer 2 LLM checks")
-        # Guard: if the lander is unreachable or its text is suspiciously short,
-        # auto-flag for manual review — we can't reliably do Ad-to-Page Match.
-        lander_text_len = len(lander.get("text", "") or "")
-        lander_ok = lander.get("ok", False)
-        if not lander_ok or lander_text_len < 200:
-            l2 = {
-                "violations": [{
-                    "where": "Lander",
-                    "quote": lander.get("url", ""),
-                    "reason": (
-                        f"Ленд недоступен или содержит мало контента ({lander_text_len} симв.) — "
-                        f"соответствие ленду нужно проверить вручную."
-                    ),
-                    "policy_section": "manual_review",
-                    "category": "standard",
-                }],
-                "confidence": 0.0,
-                "_skipped": "lander_unavailable",
-            }
-            print(f"  layer 2 SKIPPED — lander unreachable, forcing manual_review")
-        else:
-            l2 = llm_checks.check(sub, lander, videos, numeric_claims=numeric_claims, platform=src)
-            print(f"  layer 2 violations: {len(l2.get('violations') or [])}")
+        l2 = layer2_check(sub, lander, videos, numeric_claims, src)
 
         # Tier-1 deterministic numeric backstop — only when the lander is actually
         # available (otherwise every number would falsely fail). When the lander is
         # unreachable the manual_review path above already covers us.
+        lander_ok = lander.get("ok", False)
+        lander_text_len = len(lander.get("text", "") or "")
         numeric_hits: list[dict] = []
         if lander_ok and lander_text_len >= 200:
             numeric_hits = text_policy.check_numeric_claims(numeric_sources, lander.get("text", ""))
