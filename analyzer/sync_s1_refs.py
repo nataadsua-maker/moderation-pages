@@ -30,7 +30,15 @@ WORKSPACE_IDS = {
     "RSOC": "675aba9a03358d00126edba0",
     "RSOC2": "67a21b41c01f0e00125a998d",
     "RSOC BA 2": "67d7f9cb7d0af600127847c4",
-    "NataN": "67e14fd10be2a40012f7a5b1",
+    # Переименования 08.09.2026 в ClickFlare (id прежние, поменялись только имена).
+    # Старые названия оставлены как псевдонимы: строки таблицы, где их ещё не
+    # поправили, продолжают резолвиться.
+    "NataN - Team": "67e14fd10be2a40012f7a5b1",
+    "NataN": "67e14fd10be2a40012f7a5b1",  # старое имя того же воркспейса
+    "NataN-2": "6683ed296f93eb00126fc522",  # бывший Facebook Nataliia Team
+    "Facebook Nataliia Team": "6683ed296f93eb00126fc522",
+    "timur.sk - NataN - Team": "65c36b8c408c920012d067bf",  # бывший Tik Tok Nataliia Team
+    "Tik Tok Nataliia Team": "65c36b8c408c920012d067bf",
     "Taboola": "664328a5085f110012c3780c",
     "Anya team": "67922040e505a00012f04a7d",
     "Facebook main Team": "65c337182b5a950012bc5af8",
