@@ -45,21 +45,31 @@ def vision_stats() -> dict:
 # словами (DESCRIBE_PROMPT), а полиси применяет текстовая модель (CLASSIFY_PROMPT),
 # у которой JSON-режим работает. Описание просим сразу под нужные признаки, иначе
 # классификатору будет не за что зацепиться.
-DESCRIBE_PROMPT = """Describe this frame from an advertising video for a compliance reviewer.
+# Промпт НЕ называет читателя «compliance reviewer»: на заявке REQ-260907-113
+# модель выдала на кадрах без текста три «плашки» вида «Compliance Reviewer
+# Ensure your business is compliant with regulations» — то есть рекламу продукта,
+# собранную из слов самого промпта. Больше в пайплайне этих слов взять негде.
+# Заодно прямой запрет выдумывать текст: 11b на пустом кадре склонна дописывать
+# правдоподобное. Пустая плашка безопасна, выдуманная — нет: она и висит на
+# карточке, и уезжает первой строкой в headline оффера при заводе в трекер.
+DESCRIBE_PROMPT = """Describe this single frame from a video. Report only what is literally visible in the image.
 
-1. Transcribe ALL on-screen text verbatim, exactly as written, in a section "ON-SCREEN TEXT:".
-   If there is no text, write "ON-SCREEN TEXT: none".
+1. In a section "ON-SCREEN TEXT:", transcribe every piece of text that is actually rendered in
+   this image, verbatim, each caption on its own line. Only text you can literally read in the
+   picture. Never write text that is not in the image, and never invent a product, brand or
+   slogan. If the image contains no readable text at all, write exactly: ON-SCREEN TEXT: none
 2. In a section "SCENE:", describe what is shown: people (clothing, pose, how much skin is
    visible, whether the framing is sexualized), objects, setting, product.
 3. In a section "OVERLAYS:", list any graphics drawn ON TOP of the footage: arrows, circles or
    highlights pointing at something; buttons; search fields; lists of search results; text
    banners. For each say whether it looks like a real part of a shown app/website or an
-   overlay added by the advertiser.
+   overlay added by the advertiser. If there are none, write "OVERLAYS: none".
 4. In a section "NOTABLE:", mention if you see any of: side-by-side before/after comparison,
    nudity or sexual content, injuries/blood/shocking imagery, weapons, gambling (casino, slots,
    betting), politicians or political symbols, drugs, alcohol.
 
-Be literal and factual. Describe only what is actually visible, do not guess intent."""
+Be literal and factual. Describe only what is actually visible, do not guess intent and do not
+describe what a similar image might contain."""
 
 
 CLASSIFY_PROMPT = """You judge a DESCRIPTION of a single frame from an advertising video for RSOC policy compliance.

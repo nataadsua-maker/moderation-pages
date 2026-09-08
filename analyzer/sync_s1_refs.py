@@ -105,6 +105,9 @@ def parse_buyers(wb) -> dict:
         ci_ws = col_index(header, "Воркспейс")
         ci_dom = col_index(header, "Домен по умолчанию")
         ci_sn = col_index(header, "Источник SN")
+        # Воркспейс под Taboola: у баеров разный, поэтому отдельной колонкой.
+        # Нет колонки или пусто — сорс TB работает на воркспейсе по умолчанию.
+        ci_tbws = col_index(header, "Воркспейс TB")
         # Ник в ростере — ключ поиска. Пусто = совпадает с ником для нейминга.
         ci_rn = col_index(header, "Ник в ростере")
         out: dict = {}
@@ -124,6 +127,9 @@ def parse_buyers(wb) -> dict:
                 print(f"  ⚠ {nick}: неизвестный воркспейс «{ws_name}» — id не проставлен")
             if dom_name and dom_name not in DOMAIN_IDS:
                 print(f"  ⚠ {nick}: неизвестный домен «{dom_name}» — id не проставлен")
+            tb_ws_name = cell(row, ci_tbws)
+            if tb_ws_name and tb_ws_name not in WORKSPACE_IDS:
+                print(f"  ⚠ {nick}: неизвестный воркспейс TB «{tb_ws_name}» — id не проставлен")
             sn_id = cell(row, ci_sn)
             if sn_id and not re.fullmatch(r"[0-9a-f]{24}", sn_id):
                 print(f"  ⚠ {nick}: «Источник SN» не похож на id трекера: {sn_id}")
@@ -140,6 +146,8 @@ def parse_buyers(wb) -> dict:
                 "domainId": DOMAIN_IDS.get(dom_name),
                 # Персональный источник SmartNews: в таблице лежит id из трекера.
                 "snSourceId": (cell(row, ci_sn) or None),
+                "tbWorkspace": tb_ws_name or None,
+                "tbWorkspaceId": WORKSPACE_IDS.get(tb_ws_name),
             }
         print(f"баеры: вкладка «{name}», строк {len(out)}")
         return out

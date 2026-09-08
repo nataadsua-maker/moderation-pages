@@ -75,6 +75,10 @@ def norm_platform(p: str | None) -> str:
         return "nb"
     if p == "all_sources":
         return "other"
+    # FB-2 — тот же Facebook, отличается только сборкой запуска в трекере,
+    # полиси у него общая с fb.
+    if p == "fb2":
+        return "fb"
     return p if p in ("nb", "fb", "tt", "other") else "other"
 
 
