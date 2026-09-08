@@ -1,12 +1,11 @@
 # moderation-pages
 
-GitHub Pages + GitHub Actions для сервиса автомодерации связок RSOC.
+GitHub Actions для сервиса автомодерации связок RSOC.
 
 - `analyzer/` — Python код анализатора (видео + NIM Llama + полиси)
 - `.github/workflows/moderate.yml` — Action триггерится через `repository_dispatch` от Cloudflare Worker'а
-- `templates/` — Jinja2 шаблоны страниц разбора
-- `docs/` — GitHub Pages output (`docs/sub/<id>/index.html`)
 
-URL Pages: <https://nataadsua-maker.github.io/moderation-pages/>
+Разбор заявки живёт в кабинете воркера (`/sub/<id>`), туда же ведёт ссылка из бота.
+Страниц на GitHub Pages больше нет: шаблон и рендер удалены как мёртвый код.
 
 Управляющий Worker и архитектура: [cpa-arbitrage/moderation-service](https://github.com/nataadsua-maker/moderation-service) (Nataliia's workspace).
