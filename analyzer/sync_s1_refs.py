@@ -37,6 +37,7 @@ WORKSPACE_IDS = {
     "Guide": "6981ffd705eda80012d9766e",
     "Yuri tests": "694168376a7c2f00120921c5",
     "Test_Loans": "699dd1ae003fa200123e388c",
+    "Facebook Volodimir": "6644537840f7a200122cafba",
 }
 DOMAIN_IDS = {
     "trk.irarh.space": "66e1674c061c500013ac4fa8",
