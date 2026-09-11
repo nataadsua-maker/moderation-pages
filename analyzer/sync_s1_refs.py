@@ -173,6 +173,9 @@ def parse_segments(wb) -> dict:
         header = [str(c or "") for c in rows[h]]
         ci_dom = col_index(header, "System1")
         ci_st = col_index(header, "Статус домена")
+        # Необязательная колонка: короткий код домена для нейминга (ANSW, TSD).
+        # Нет колонки или пустая ячейка — сервис возьмёт 4 буквы из самого домена.
+        ci_code = col_index(header, "Код домена")
         out: dict = {}
         for row in rows[h + 1:]:
             dom = cell(row, ci_dom)
@@ -188,7 +191,11 @@ def parse_segments(wb) -> dict:
                     segs[s] = v
             if not segs:
                 continue
-            out[dom.lower()] = {"domain": dom, "status": cell(row, ci_st), "segments": segs}
+            entry = {"domain": dom, "status": cell(row, ci_st), "segments": segs}
+            code = re.sub(r"[^A-Za-z0-9]", "", cell(row, ci_code)).upper()
+            if code:
+                entry["code"] = code
+            out[dom.lower()] = entry
         active = sum(1 for v in out.values() if "актив" in v["status"].lower())
         print(f"сегменты: вкладка «{name}», доменов {len(out)} (активных {active})")
         return out
