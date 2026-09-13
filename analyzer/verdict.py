@@ -62,7 +62,16 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
     # объясняет своё же предложение»), это мусор — мы ленд не модерируем. Режем такие, чтобы
     # баер/модератор их не разгребали руками (как было на REQ-260612-018).
     l2_lander_dropped = 0
+    # Кнопку объявления (Button CTA) LLM не судит — её проверяют только regex-правила
+    # Layer 1 (транзакционные и кликовые призывы). Модель читала пример «Learn More /
+    # Discover More / Read More» из подсказки как закрытый список и случайно отклоняла
+    # «Take a Look» (REQ-260913-022: 2 заявки из 58 с той же кнопкой). Промпт кнопку уже
+    # не получает, а этот фильтр гарантирует, что вердикт по ней не зависит от модели.
+    l2_button_dropped = 0
     for v in l2_result.get("violations") or []:
+        if _is_button_where(v.get("where", "")):
+            l2_button_dropped += 1
+            continue
         # Служебный сигнал «ленд недоступен / сбой проверки» тоже указывает на ленд,
         # но это не суждение о нём, а просьба к модератору. Его резать нельзя:
         # вырежем — нарушений не останется, и заявка молча уйдёт в approve.
@@ -127,6 +136,7 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
             "layer2_count": len(l2_result.get("violations") or []),
             "numeric_count": len(numeric_hits or []),
             "l2_lander_dropped": l2_lander_dropped,
+            "l2_button_dropped": l2_button_dropped,
             "visual_count": sum(len(v.get("frames_analysis", [])) for v in videos),
             "tier1_count": len([v for v in violations if v.get("tier") == TIER1]),
             "tier2_count": len([v for v in violations if v.get("tier") == TIER2]),
@@ -134,6 +144,12 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
             "confidence": confidence,
         },
     }
+
+
+def _is_button_where(where: str) -> bool:
+    """Нарушение про кнопку объявления (Button CTA / «Кнопка»)."""
+    w = (where or "").strip().lower()
+    return w.startswith("button") or w.startswith("кнопк")
 
 
 def _is_lander_where(where: str) -> bool:

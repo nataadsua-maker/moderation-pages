@@ -22,16 +22,22 @@ STOP_WORD_RULES = [
      "hint": "{city}/{state} dynamic-локация — запрет"},
     {"id": "urgency", "pattern": r"\b(limited time|today only|act now|hurry|don'?t miss)\b",
      "section": "2.3", "severity": "error", "hint": "urgency-формулировки запрещены"},
+    # CTA. Кнопку объявления (Button CTA) судят ТОЛЬКО эти правила — LLM её не получает.
+    # Нарушение: транзакционный или кликовый призыв. Информационные кнопки разрешены,
+    # включая «…Now» (Check Now, See Now, Discover Now) и See Deals — решение Nataliia
+    # 13.09.2026. Эмодзи в кнопке нарушением не считаются.
     {"id": "apply_cta", "pattern": r"\bapply (now|here|today)\b", "section": "2.3, 2.4", "severity": "error",
      "hint": "Apply Now/Here — запрещённый CTA"},
     {"id": "claim_cta", "pattern": r"\bclaim (your|here|now|yours)\b", "section": "2.3, 2.4", "severity": "error",
      "hint": "Claim — запрещённый CTA"},
     {"id": "shop_buy", "pattern": r"\b(shop|buy) (now|here)\b", "section": "2.4", "severity": "error",
      "hint": "Shop/Buy Now — запрещённый CTA"},
+    {"id": "get_yours", "pattern": r"\bget yours\b", "section": "2.4", "severity": "error",
+     "hint": "Get Yours — запрещённый CTA"},
     # Правило Nataliia (24.08.2026): на Newsbreak такой CTA пропускаем ВНУТРИ
     # ролика (озвучка, плашки на кадрах). В Adtitle и Description он остаётся
-    # нарушением, как и на остальных сорсах. Button CTA сюда не относится —
-    # он выбирается из allowlist (BUTTON_CTA_ALLOWLIST в воркере).
+    # нарушением, как и на остальных сорсах. Button CTA сканируется как поле
+    # объявления (не in_media), так что в кнопке этот запрет в силе на всех сорсах.
     {"id": "click_tap_search_here", "pattern": r"\b(click here|tap (here|below|to)|search here)\b",
      "section": "2.3, 2.4", "severity": "error", "hint": "Click/Tap/Search Here — запрещённый CTA",
      "media_exempt_sources": ["nb"]},

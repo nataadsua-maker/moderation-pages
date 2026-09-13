@@ -32,7 +32,7 @@ A miss here is far worse than a miss on a minor wording issue.
 === GOLDEN RULES ===
 1. Ad-to-Page Match: every claim in the CREATIVE must be supported by the lander text. If the creative makes a claim not present on the lander → violation (section 2.1 / 4.4).
    DIRECTION IS STRICTLY ONE-WAY. The lander is the SOURCE OF TRUTH / reference — it is NEVER the thing under audit.
-   - We audit CREATIVE texts (Adtitle, Description, Button CTA, voiceover, плашки кадров) against the lander. We do NOT audit, judge, or moderate the lander itself.
+   - We audit CREATIVE texts (Adtitle, Description, voiceover, плашки кадров) against the lander. We do NOT audit, judge, or moderate the lander itself.
    - NEVER raise a violation whose `quote` is a sentence taken from the lander. The `quote` MUST be a phrase from the CREATIVE.
    - NEVER ask to add/change/explain anything ON the lander (no "добавить на лендинг", no "лендинг не объясняет X"). `how_to_fix` must always change the CREATIVE.
    - A statement that exists ONLY on the lander and is absent from the creative is NOT a violation — ignore it entirely.
@@ -44,6 +44,7 @@ A miss here is far worse than a miss on a minor wording issue.
    - Emotional testimonial alone ("changed my life", "I love it") is OK if no other violations co-occur in the same piece. If co-occurs with a hard violation → reject (testimonial amplifies).
 4. Property vs promise: describing product property (lightweight, water-resistant) is OK; guaranteeing outcome ("guaranteed to look real") is forbidden (Nataliia's rule).
 5. "Cut, click, done" describing assembly is NOT a CTA violation (no user-action call).
+5b. The ad button (Button CTA) is NOT yours to judge: a separate deterministic rule checks it, and it is not in the payload. Never output a violation with `where` = "Button CTA".
 6. Before/after — flagged only at the frame level (visual layer), not here.
 
 === HONEST CONFIDENCE ===
@@ -62,12 +63,12 @@ STRICT JSON ONLY:
 {
   "violations": [
     {
-      "where": "<Adtitle | Description | Button CTA | Voiceover Video N | Плашка Video N MM:SS | system>",  // NEVER "Lander" — мы судим только крео, ленд это эталон
+      "where": "<Adtitle | Description | Voiceover Video N | Плашка Video N MM:SS | system>",  // NEVER "Lander" — мы судим только крео, ленд это эталон
       "title": "<краткий заголовок нарушения, 2-5 слов, по-русски: напр. 'Прямой призыв к действию', 'Обещание, которого нет на лендинге'>",
       "quote": "<exact quote, в оригинале как на крео>",
       "quote_ru": "<перевод цитаты на русский; если цитата уже русская или это URL — повтори как есть>",
       "reason": "<«Почему нельзя»: 1-2 предложения на русском, простым языком, без жаргона, БЕЗ длинного тире>",
-      "how_to_fix": "<«Как исправить»: конкретная рекомендация на русском, что заменить/убрать; для запрещённых CTA предложи допустимый (Learn More / Discover More / Read More)>",
+      "how_to_fix": "<«Как исправить»: конкретная рекомендация на русском, что заменить/убрать; для запрещённых CTA предложи информационный вариант, например Learn More или Take a Look (это примеры, а не полный список разрешённых)>",
       "policy_section": "<e.g. 2.1, 4.4, 5.1.1, manipulation, manual_review>",
       "category": "standard"
     }
@@ -97,7 +98,7 @@ This submission runs on Newsbreak. For THIS source only:
   when they appear INSIDE THE VIDEO — in the voiceover (`where` = "... озвучка") or in an
   on-screen плашка/caption (`where` = "... плашка"). Do NOT report them as a violation there,
   and do NOT lower confidence or add a manual_review note because of them.
-- They remain FORBIDDEN in the ad fields: Adtitle, Description, Button CTA. Report them there
+- They remain FORBIDDEN in the ad fields: Adtitle, Description. Report them there
   exactly as before.
 - This exception covers the WORDING only. A fake clickable button, a fake search field, fake
   search results or an arrow pointing at a click target stay violations everywhere.
@@ -113,7 +114,6 @@ def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: li
         "creative": {
             "adtitle": submission["adtitle"],
             "description": submission["description"],
-            "button_cta": submission["button_cta"],
             "offer": submission["offer"],
         },
         "numeric_claims_detected": numeric_claims or [],
