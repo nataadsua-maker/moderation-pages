@@ -79,6 +79,14 @@ A miss here is far worse than a miss on a minor wording issue.
    - A statement that exists ONLY on the lander and is absent from the creative is NOT a violation — ignore it entirely.
    - `where` for a 2.1 violation must always be a creative element, NEVER "Lander". Cite the lander only inside `reason` (e.g. "этого нет на лендинге").
 2. Identity misrepresentation: creative pretends to be employer / bank / govt / insurer when it is not (section 5.1.1).
+2a. Мед-кликбейт: чужая профессиональная роль (section 5.1.1, решение Nataliia 18.09.2026). The
+   creative must never SPEAK AS a doctor, nurse, pharmacist, scientist, lawyer or an official body.
+   "As a doctor, I tell my patients…", "Врач объясняет, почему…", "our specialists confirm",
+   "the Health Ministry warns" said in the creative's own voice = violation, even when the advice
+   itself is harmless and even when the lander says the same thing. An ordinary person telling their
+   own story ("my doctor told me to…", "I was diagnosed last year") is NOT a violation — what is
+   forbidden is the speaker CLAIMING the professional authority, not the medical topic.
+   Attribution to third parties ("recommended BY DOCTORS", "top picks BY EXPERTS") stays under 2.1.
 2b. Numbers (HIGH PRIORITY): every concrete number in the creative — money ($1,200, $50/mo), percent (50% off), counts ("3 things"), durations — MUST be present on the lander. The FORM does not matter: «6» and «six» are the same number, «$1,200» and «$1200» are the same amount, «third row of seating» supports «6 seater». Compare VALUES, not spelling. A number is missing only if the lander states no such value at all. ОТДЕЛЬНО про счёт ПЕРЕЧИСЛЯЕМЫХ пунктов: "five daily choices", "3 things you should know", "два способа" supported ONLY if the lander actually lists that many items. Это правило НЕ про характеристики товара: "6 seater", "500 GB", "third row" — обычные факты, к ним применяется правило вывода (третий ряд сидений подтверждает 6 мест), and a testimonial number must not exceed the lander's maximum. The payload field `numeric_claims_detected` lists numbers a regex already spotted in the creative; for EACH one, confirm it is present verbatim on the lander. If absent or exceeded → violation (section 2.1). Treat the list as a checklist, but also catch numbers it missed.
 2c. Offer, price or tangible benefit (section 2.2). The lander is an INFORMATIONAL ARTICLE, not a
    shop and not an application form. The creative must not offer a purchase, a price, a gift, a
@@ -96,6 +104,13 @@ A miss here is far worse than a miss on a minor wording issue.
 5. "Cut, click, done" describing assembly is NOT a CTA violation (no user-action call).
 5b. The ad button (Button CTA) is NOT yours to judge: a separate deterministic rule checks it, and it is not in the payload. Never output a violation with `where` = "Button CTA".
 6. Before/after — flagged only at the frame level (visual layer), not here.
+7. Language must match the lander (section 4.4, решение Nataliia 18.09.2026). Every creative text —
+   Adtitle, Description, voiceover, плашки — must be in the SAME language as the lander page: the
+   reader must not land on a page they cannot read. English creative on a Spanish or Japanese
+   lander, or two languages mixed inside the creative itself, is a violation. Judge by the LANDER
+   TEXT in the payload, never by the URL. Single borrowed words, brand and product names are normal
+   in any language and are NOT a mismatch. `where` must name the creative element, and the `reason`
+   must say which language the creative is in and which one the lander is in.
 
 === HONEST CONFIDENCE ===
 Be calibrated about confidence:

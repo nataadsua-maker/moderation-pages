@@ -43,7 +43,7 @@ FALLBACK_STOP_WORD_RULES = [
      "hint": "near you/me — нельзя без локального контента на ленде"},
     {"id": "city_state_placeholder", "pattern": r"\{(city|state)\}", "section": "2.3", "severity": "error",
      "hint": "{city}/{state} dynamic-локация — запрет"},
-    {"id": "urgency", "pattern": r"\b(limited time|today only|act now|hurry|don'?t miss)\b",
+    {"id": "urgency", "pattern": r"\b(limited time|today only|act now|hurry|don'?t miss|last call|final hours)\b",
      "section": "2.3", "severity": "error", "hint": "urgency-формулировки запрещены"},
     # CTA. Кнопку объявления (Button CTA) судят ТОЛЬКО эти правила — LLM её не получает.
     # Нарушение: транзакционный или кликовый призыв. Информационные кнопки разрешены,
