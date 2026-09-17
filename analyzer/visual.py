@@ -1,9 +1,12 @@
 """Per-frame visual analysis: OCR plашек + visual policy + 18+ detection."""
 from __future__ import annotations
+import base64
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
+
+import requests
 
 from nim import text_check, vision_describe_frame
 from video import format_ts
@@ -157,6 +160,49 @@ ocr_text must be the on-screen text quoted in the description (the "ON-SCREEN TE
 verbatim and nothing else — not the description itself. If it says there is no text, return ""."""
 
 
+# ── Явное 18+ ──
+#
+# Описательная модель по 18+ настроена на высокую полноту и флагает всё
+# двусмысленное: «текст над грудью», «стрелка указывает на грудь», «женщина в
+# купальнике». Модератор снимал 93% таких реджектов, поэтому её находки по 18+
+# заявку больше НЕ валят (решение Nataliia: двусмысленное — аппрув).
+#
+# Явное ловим отдельным классификатором модерации OpenAI: он бесплатный и на
+# проверке 34 реальных заявок дал ноль ложных срабатываний (максимум 0.0029 из 1
+# на спокойном крео). Нет ключа или он недоступен — проверка молча пропускается,
+# заявка из-за этого не падает.
+ADULT_THRESHOLD = float(os.environ.get("ADULT_THRESHOLD", "0.5"))
+
+
+def explicit_adult(frame_path: Path) -> tuple[bool, float]:
+    """(явное ли 18+, оценка 0..1) по кадру."""
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        return False, 0.0
+    try:
+        with open(frame_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        r = requests.post(
+            "https://api.openai.com/v1/moderations",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "omni-moderation-latest",
+                  "input": [{"type": "image_url",
+                             "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]},
+            timeout=60,
+        )
+        if r.status_code != 200:
+            print(f"  классификатор 18+ ответил {r.status_code}, кадр не проверен")
+            return False, 0.0
+        res = r.json()["results"][0]
+        scores, cats = res["category_scores"], res["categories"]
+        score = max(scores.get("sexual", 0.0), scores.get("sexual/minors", 0.0))
+        flagged = bool(cats.get("sexual") or cats.get("sexual/minors"))
+        return (flagged or score >= ADULT_THRESHOLD), score
+    except Exception as e:
+        print(f"  классификатор 18+ недоступен ({type(e).__name__}), кадр не проверен")
+        return False, 0.0
+
+
 def analyze_frame(frame_path: Path) -> dict:
     # A flaky vision call on one frame must NOT abort the whole submission —
     # skip the frame (no OCR / no visual violations) and let the verdict complete.
@@ -187,9 +233,12 @@ def analyze_video_frames(frames: list[dict]) -> list[dict]:
     workers = max(1, min(VISION_CONCURRENCY, len(frames)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         analyses = list(pool.map(lambda fr: analyze_frame(fr["path"]), frames))
+        adult = list(pool.map(lambda fr: explicit_adult(fr["path"]), frames))
     out = []
-    for fr, analysis in zip(frames, analyses):
+    for fr, analysis, (is_adult, adult_score) in zip(frames, analyses, adult):
         out.append({
+            "adult_explicit": is_adult,
+            "adult_score": round(adult_score, 4),
             "ts_sec": fr["ts_sec"],
             "ts": format_ts(fr["ts_sec"]),
             "path": str(fr["path"]),

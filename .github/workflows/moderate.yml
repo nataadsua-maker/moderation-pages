@@ -85,6 +85,9 @@ jobs:
           WORKER_URL: ${{ vars.WORKER_URL }}
           VERDICT_SHARED_SECRET: ${{ secrets.VERDICT_SHARED_SECRET }}
           NIM_API_KEY: ${{ secrets.NIM_API_KEY }}
+          # Классификатор явного 18+ по кадрам (бесплатный эндпоинт модерации).
+          # Нет ключа — проверка молча пропускается, заявка не падает.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_S3_ENDPOINT: ${{ vars.R2_S3_ENDPOINT }}

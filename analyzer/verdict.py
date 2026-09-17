@@ -95,6 +95,21 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
         kind = video.get("kind", "video")
         label = "Картинка" if kind == "image" else "Видео"
         for fr in video.get("frames_analysis", []):
+            # Явное 18+ по классификатору модерации — единственное, что валит
+            # заявку по этой категории. Нулевая терпимость, поэтому Tier 1.
+            if fr.get("adult_explicit"):
+                critical_18plus = True
+                where_a = f"{label} {v_idx+1}" if kind == "image" else f"{label} {v_idx+1}, {fr['ts']} кадр"
+                violations.append({
+                    "where": where_a,
+                    "title": "Запрещённый кадр 18+",
+                    "quote": "кадр",
+                    "reason": "На кадре откровенный контент 18+. Такое крео заливать нельзя.",
+                    "how_to_fix": "Убери или замени этот кадр.",
+                    "policy_section": "4.3",
+                    "category": "critical_18plus",
+                    "tier": TIER1,
+                })
             for viol in fr.get("visual_violations", []):
                 t = viol.get("type", "")
                 detail = viol.get("detail", "")
@@ -103,9 +118,12 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
                 # catches real "Click/Tap/Search here" cases, so skip visual fake_ui.
                 if t == "fake_ui":
                     continue
-                is_18plus = t == "adult_18plus"
-                if is_18plus:
-                    critical_18plus = True
+                # Двусмысленные находки описательной модели по 18+ («возможно
+                # 18+», «текст над грудью») заявку не валят: модератор снимал
+                # 93% таких реджектов. Явное ловится классификатором выше.
+                if t == "adult_18plus":
+                    continue
+                is_18plus = False
                 where = f"{label} {v_idx+1}" if kind == "image" else f"{label} {v_idx+1}, {fr['ts']} кадр"
                 violations.append({
                     "where": where,
