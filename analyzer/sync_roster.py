@@ -86,8 +86,12 @@ def main() -> None:
         tg = cell(row, ci_tg)
         if not (tg.startswith("@") and len(tg) > 1):
             continue
-        if "увол" in cell(row, ci_status).lower():
+        # «Переведен» = ушёл в другую команду: в списке баеров модерки ему делать
+        # нечего так же, как уволенному, иначе он возвращается каждым обновлением.
+        status = cell(row, ci_status).lower()
+        if "увол" in status or "переведен" in status:
             fired += 1
+            print("  пропущен:", tg, "—", cell(row, ci_status))
             continue
         key = tg.lower().lstrip("@").strip()
         if key:
