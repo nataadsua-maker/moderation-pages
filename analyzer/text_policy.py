@@ -6,10 +6,33 @@
 поле в policy_rules.ts не нужно и вредно.
 """
 from __future__ import annotations
+import os
 import re
 
-# Keep in sync with worker/src/policy_rules.ts STOP_WORD_RULES
-STOP_WORD_RULES = [
+# Единый источник правил — воркер: он отдаёт их по /api/policy-rules, ими же
+# подсвечивается форма подачи. Список ниже остаётся как запасной, если сервис
+# недоступен: без правил разбор молча ослабнет, а это хуже устаревшего списка.
+def _rules_from_worker() -> list[dict] | None:
+    url = os.environ.get("WORKER_URL")
+    if not url:
+        return None
+    try:
+        import requests
+        r = requests.get(f"{url}/api/policy-rules", timeout=20)
+        if r.status_code != 200:
+            print(f"  правила: воркер ответил {r.status_code}, беру запасной список")
+            return None
+        rules = (r.json() or {}).get("rules") or []
+        if not rules:
+            return None
+        print(f"  правила: взято у сервиса, {len(rules)} шт.")
+        return rules
+    except Exception as e:
+        print(f"  правила: не забрал у сервиса ({type(e).__name__}), беру запасной список")
+        return None
+
+
+FALLBACK_STOP_WORD_RULES = [
     {"id": "free", "pattern": r"\bfree\b", "section": "2.3", "severity": "error",
      "hint": "'free' запрещено в денежном контексте"},
     {"id": "guaranteed", "pattern": r"\bguarantee(d|s)?\b", "section": "2.3", "severity": "error",
@@ -87,6 +110,8 @@ def norm_platform(p: str | None) -> str:
         return "fb"
     return p if p in ("nb", "fb", "tt", "other") else "other"
 
+
+STOP_WORD_RULES = _rules_from_worker() or FALLBACK_STOP_WORD_RULES
 
 def scan_text(text: str, where: str, platform: str | None = None,
               in_media: bool = False) -> list[dict]:
