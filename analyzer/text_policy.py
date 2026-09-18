@@ -33,7 +33,7 @@ def _rules_from_worker() -> list[dict] | None:
 
 
 FALLBACK_STOP_WORD_RULES = [
-    {"id": "free", "pattern": r"\bfree\b", "section": "2.3", "severity": "error",
+    {"id": "free", "pattern": r"(?<!hands )(?<!hands-)(?<!toll )(?<!toll-)(?<!duty )(?<!duty-)(?<!tax )(?<!tax-)(?<!gluten )(?<!gluten-)(?<!lactose )(?<!lactose-)(?<!sugar )(?<!sugar-)(?<!carb )(?<!carb-)(?<!smoke )(?<!smoke-)(?<!dust )(?<!dust-)(?<!scratch )(?<!scratch-)(?<!tool )(?<!tool-)(?<!cord )(?<!cord-)(?<!wrinkle )(?<!wrinkle-)\bfree(?![-\w])", "section": "2.3", "severity": "error",
      "hint": "'free' запрещено в денежном контексте"},
     {"id": "guaranteed", "pattern": r"\bguarantee(d|s)?\b", "section": "2.3", "severity": "error",
      "hint": "обещание/гарантия запрещены"},
