@@ -35,7 +35,29 @@ MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.5-flash-lite")
 # ожидается быстрее, но потолок держим с запасом — это запасной путь, он и так
 # зовётся только по сбойным кадрам.
 TIMEOUT = int(os.environ.get("GEMINI_TIMEOUT", "60"))
-RETRIES = int(os.environ.get("GEMINI_RETRIES", "2"))
+# Ретраев больше, чем кажется нужным, и это намеренно. Nataliia решила остаться
+# на БЕСПЛАТНОМ тарифе (23.09.2026), а он лимитирован по запросам в минуту —
+# значит на наплыве Gemini сам словит 429. При этом он последняя линия: если
+# сдастся он, сбои NIM подхватывать некому и кадр теряется. Двух попыток с
+# паузами в пару секунд мало ровно по той же причине, по которой их не хватило
+# текстовой модели NIM утром того же дня (см. nim.py). Здесь терпение дешевле
+# потерянного кадра: запасной путь и так зовётся только по сбоям.
+RETRIES = int(os.environ.get("GEMINI_RETRIES", "4"))
+RETRY_CAP = float(os.environ.get("GEMINI_RETRY_CAP", "30"))
+
+
+def _backoff_delay(attempt: int, resp) -> float:
+    """Пауза перед следующей попыткой: Retry-After, иначе экспонента с джиттером."""
+    if resp is not None:
+        ra = resp.headers.get("Retry-After")
+        if ra:
+            try:
+                return max(0.0, min(float(ra), RETRY_CAP))
+            except ValueError:
+                pass
+    # Джиттер обязателен: кадры прогона идут параллельно, без разброса потоки
+    # просыпаются одной секундой и повторяют тот же залп в тот же лимит.
+    return min(2 * (2 ** attempt), RETRY_CAP) * (0.5 + random.random())
 
 _MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 
@@ -70,6 +92,7 @@ def describe_frame(frame_path: Path, question: str) -> str:
     url = f"{API_BASE}/{MODEL}:generateContent?key={os.environ['GEMINI_API_KEY']}"
     last = None
     for attempt in range(RETRIES):
+        resp = None
         try:
             r = requests.post(url, json=payload, timeout=TIMEOUT,
                               headers={"Content-Type": "application/json"})
@@ -78,15 +101,14 @@ def describe_frame(frame_path: Path, question: str) -> str:
                 parts = data["candidates"][0]["content"]["parts"]
                 return "".join(p.get("text", "") for p in parts).strip()
             if r.status_code in (429, 500, 502, 503, 504):
+                resp = r
                 last = RuntimeError(f"Gemini {r.status_code}: {r.text[:200]}")
             else:
                 raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:300]}")
         except requests.exceptions.RequestException as e:
             last = e
         if attempt < RETRIES - 1:
-            # Джиттер по той же причине, что и в nim.py: кадры идут параллельно,
-            # без разброса потоки просыпаются одной секундой и бьют залпом.
-            time.sleep((2 ** attempt) * (0.5 + random.random()))
+            time.sleep(_backoff_delay(attempt, resp))
     raise last if last else RuntimeError("Gemini failed")
 
 
@@ -110,6 +132,7 @@ def classify_frame(system_prompt: str, description: str) -> dict:
     url = f"{API_BASE}/{MODEL}:generateContent?key={os.environ['GEMINI_API_KEY']}"
     last = None
     for attempt in range(RETRIES):
+        resp = None
         try:
             r = requests.post(url, json=payload, timeout=TIMEOUT,
                               headers={"Content-Type": "application/json"})
@@ -117,11 +140,12 @@ def classify_frame(system_prompt: str, description: str) -> dict:
                 parts = r.json()["candidates"][0]["content"]["parts"]
                 return json.loads("".join(p.get("text", "") for p in parts).strip())
             if r.status_code in (429, 500, 502, 503, 504):
+                resp = r
                 last = RuntimeError(f"Gemini {r.status_code}: {r.text[:200]}")
             else:
                 raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:300]}")
         except requests.exceptions.RequestException as e:
             last = e
         if attempt < RETRIES - 1:
-            time.sleep((2 ** attempt) * (0.5 + random.random()))
+            time.sleep(_backoff_delay(attempt, resp))
     raise last if last else RuntimeError("Gemini failed")
