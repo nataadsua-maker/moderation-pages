@@ -7,7 +7,9 @@
 Замер на реальном крео: NIM 10 успешных из 14, Gemini 6 из 6.
 
 Схема (вариант C, решение Nataliia): NIM остаётся основным и тянет те ~70%, что
-может, Gemini подхватывает ТОЛЬКО кадры, которые NIM уронил. Платим за поломку, а
+может, Gemini подхватывает ТОЛЬКО то, что NIM уронил — и чтение кадра, и шаг
+полиси (NIM-текст тоже сыпется: 429 на наплыве, 503 "Service temporarily
+overloaded" в спокойное время). Платим за поломку, а
 не за весь объём — ~$14/мес против ~$70/мес при полном переезде на Gemini.
 
 Нет ключа — модуль молча отключается, поведение ровно как до него: кадр считается
@@ -84,5 +86,42 @@ def describe_frame(frame_path: Path, question: str) -> str:
         if attempt < RETRIES - 1:
             # Джиттер по той же причине, что и в nim.py: кадры идут параллельно,
             # без разброса потоки просыпаются одной секундой и бьют залпом.
+            time.sleep((2 ** attempt) * (0.5 + random.random()))
+    raise last if last else RuntimeError("Gemini failed")
+
+
+def classify_frame(system_prompt: str, description: str) -> dict:
+    """Запасной шаг полиси, когда текстовая модель NIM отказала.
+
+    Контракт тот же, что у nim.text_check: на входе промпт полиси и описание
+    кадра, на выходе разобранный JSON. Gemini держит строгий JSON нативно
+    (responseMimeType), в отличие от vision-модели NIM — ради которой разбор
+    кадра и пришлось разбивать на два шага.
+    """
+    payload = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"role": "user", "parts": [{"text": description}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json",
+            "maxOutputTokens": 1000,
+        },
+    }
+    url = f"{API_BASE}/{MODEL}:generateContent?key={os.environ['GEMINI_API_KEY']}"
+    last = None
+    for attempt in range(RETRIES):
+        try:
+            r = requests.post(url, json=payload, timeout=TIMEOUT,
+                              headers={"Content-Type": "application/json"})
+            if r.status_code == 200:
+                parts = r.json()["candidates"][0]["content"]["parts"]
+                return json.loads("".join(p.get("text", "") for p in parts).strip())
+            if r.status_code in (429, 500, 502, 503, 504):
+                last = RuntimeError(f"Gemini {r.status_code}: {r.text[:200]}")
+            else:
+                raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:300]}")
+        except requests.exceptions.RequestException as e:
+            last = e
+        if attempt < RETRIES - 1:
             time.sleep((2 ** attempt) * (0.5 + random.random()))
     raise last if last else RuntimeError("Gemini failed")

@@ -243,9 +243,22 @@ def analyze_frame(frame_path: Path) -> dict:
     try:
         out = text_check(CLASSIFY_PROMPT, description)
     except Exception as e:
-        print(f"  policy classify failed for {frame_path} (skipping frame): {e}")
-        _count(failed=True)
-        return {"ocr_text": "", "visual_violations": [], "_raw": description[:500]}
+        # Тот же запасной путь, что и на чтении кадра: текстовая модель NIM
+        # сыпется не только на наплыве (429), но и в тишину (503 "Service
+        # temporarily overloaded"). Кадр прочитан — терять его из-за второго
+        # шага обидно вдвойне.
+        if not gemini.available():
+            print(f"  policy classify failed for {frame_path} (skipping frame): {e}")
+            _count(failed=True)
+            return {"ocr_text": "", "visual_violations": [], "_raw": description[:500]}
+        try:
+            out = gemini.classify_frame(CLASSIFY_PROMPT, description)
+            rescued = True
+            print(f"  полиси: NIM отказал ({type(e).__name__}), кадр досчитан Gemini")
+        except Exception as e2:
+            print(f"  policy classify failed for {frame_path} (skipping frame): NIM {e}; Gemini {e2}")
+            _count(failed=True)
+            return {"ocr_text": "", "visual_violations": [], "_raw": description[:500]}
     _count(failed=False, rescued=rescued)
     return out
 
