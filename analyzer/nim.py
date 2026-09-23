@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import random
 import time
 from pathlib import Path
 
@@ -24,6 +25,34 @@ TEXT_MODEL = os.environ.get("NIM_TEXT_MODEL", "nvidia/nemotron-3-super-120b-a12b
 VISION_TIMEOUT = int(os.environ.get("NIM_VISION_TIMEOUT", "45"))
 VISION_RETRIES = int(os.environ.get("NIM_VISION_RETRIES", "2"))
 
+# 23.09.2026: наплыв заявок (18 прогонов за 15 минут против обычных 3-5) выбил
+# бесплатный ключ NVIDIA в 429 — 60 отказов из 62 пришлись на текстовый шаг
+# (policy classify), и гейт слепых вердиктов уронил 18 прогонов в manual_review.
+# Vision при этом не отказал НИ РАЗУ: лимит упирается в текстовую модель.
+# Старого бэкоффа (3с, 6с) против залпа не хватало — 9 секунд ожидания на кадр,
+# после чего кадр молча выбрасывался. Запасной текстовой модели на ключе нет:
+# llama-3.3-70b/3.1-70b/3.1-8b отвечают 410 Gone, mistral/qwen — 404, поэтому
+# переждать лимит здесь дешевле, чем куда-то переключаться.
+TEXT_TIMEOUT = int(os.environ.get("NIM_TEXT_TIMEOUT", "120"))
+TEXT_RETRIES = int(os.environ.get("NIM_TEXT_RETRIES", "5"))
+RETRY_BASE = float(os.environ.get("NIM_RETRY_BASE", "2"))
+RETRY_CAP = float(os.environ.get("NIM_RETRY_CAP", "30"))
+
+
+def _backoff_delay(attempt: int, resp) -> float:
+    """Пауза перед следующей попыткой: Retry-After, иначе экспонента с джиттером."""
+    if resp is not None:
+        ra = resp.headers.get("Retry-After")
+        if ra:
+            try:
+                return max(0.0, min(float(ra), RETRY_CAP))
+            except ValueError:
+                pass
+    # Джиттер обязателен: кадры прогона летят параллельно, и без него все
+    # потоки просыпаются в одну секунду и повторяют тот же залп в тот же лимит.
+    delay = min(RETRY_BASE * (2 ** attempt), RETRY_CAP)
+    return delay * (0.5 + random.random())
+
 
 def _headers() -> dict[str, str]:
     return {
@@ -33,23 +62,25 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _post_chat(payload: dict, timeout: int = 120, retries: int = 3) -> dict:
+def _post_chat(payload: dict, timeout: int = TEXT_TIMEOUT, retries: int = TEXT_RETRIES) -> dict:
     # NVIDIA NIM occasionally times out or returns 429/5xx — retry with backoff
     # instead of letting one flaky call abort the whole submission.
     last = None
     for attempt in range(retries):
+        resp = None
         try:
             r = requests.post(f"{NIM_BASE}/chat/completions", headers=_headers(), json=payload, timeout=timeout)
             if r.status_code == 200:
                 return r.json()
             if r.status_code in (429, 500, 502, 503, 504):
+                resp = r
                 last = RuntimeError(f"NIM {r.status_code}: {r.text[:200]}")
             else:
                 raise RuntimeError(f"NIM error {r.status_code}: {r.text[:500]}")
         except requests.exceptions.RequestException as e:
             last = e
         if attempt < retries - 1:
-            time.sleep(3 * (attempt + 1))  # 3s, 6s backoff
+            time.sleep(_backoff_delay(attempt, resp))
     raise last if last else RuntimeError("NIM failed")
 
 
@@ -87,6 +118,6 @@ def text_check(system_prompt: str, user_payload: str) -> dict:
         "temperature": 0.1,
         "response_format": {"type": "json_object"},
     }
-    data = _post_chat(payload)
+    data = _post_chat(payload, timeout=TEXT_TIMEOUT, retries=TEXT_RETRIES)
     content = data["choices"][0]["message"]["content"].strip()
     return json.loads(content)

@@ -18,7 +18,14 @@ from video import format_ts
 # risk NIM 429s. analyze_frame already retries with backoff and never raises, so a
 # flaky frame degrades gracefully. Videos themselves stay sequential to keep total
 # concurrency = VISION_CONCURRENCY, not VISION_CONCURRENCY × n_videos.
-VISION_CONCURRENCY = int(os.environ.get("VISION_CONCURRENCY", "4"))
+#
+# 23.09.2026: 4 оказалось много. Потолок держится на ОДИН прогон, а прогоны между
+# собой не ограничены (concurrency-group в moderate.yml завязана на submission_id),
+# и на наплыве в 14:45-15:15 одновременно шло до 8 прогонов = до 32 запросов к
+# одному бесплатному ключу NVIDIA. Ключ ушёл в 429, 18 прогонов упали в
+# manual_review. 2 даёт до 16 на том же пике и оставляет запас по времени шага:
+# заявка на 24 кадра при 2 потоках считается ~5 мин при лимите 20.
+VISION_CONCURRENCY = int(os.environ.get("VISION_CONCURRENCY", "2"))
 
 
 # Пропущенный кадр = кадр, который никто не посмотрел. Пустой OCR при этом
