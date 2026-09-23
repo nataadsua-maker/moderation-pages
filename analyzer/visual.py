@@ -8,6 +8,7 @@ from threading import Lock
 
 import requests
 
+import gemini
 from nim import text_check, vision_describe_frame
 from video import format_ts
 
@@ -32,19 +33,24 @@ VISION_CONCURRENCY = int(os.environ.get("VISION_CONCURRENCY", "2"))
 # неотличим от «на кадре ничего нет», поэтому при массовом отказе vision вердикт
 # «нарушений не видно» ничего не значит (так 10-19.08 заявки одобрялись вслепую).
 # Считаем долю непрочитанных кадров, решение принимает moderate.py.
-_STATS = {"attempted": 0, "failed": 0}
+_STATS = {"attempted": 0, "failed": 0, "rescued": 0}
 _STATS_LOCK = Lock()
 
 
-def _count(failed: bool) -> None:
+def _count(failed: bool, rescued: bool = False) -> None:
     with _STATS_LOCK:
         _STATS["attempted"] += 1
         if failed:
             _STATS["failed"] += 1
+        if rescued:
+            _STATS["rescued"] += 1
 
 
 def vision_stats() -> dict:
-    """{'attempted': N, 'failed': M} за весь прогон."""
+    """{'attempted': N, 'failed': M, 'rescued': K} за весь прогон.
+
+    rescued — кадры, которые уронил NIM, а дочитал Gemini. Это же счётчик расхода
+    на запасной путь: платим только за них."""
     with _STATS_LOCK:
         return dict(_STATS)
 
@@ -214,19 +220,33 @@ def analyze_frame(frame_path: Path) -> dict:
     # A flaky vision call on one frame must NOT abort the whole submission —
     # skip the frame (no OCR / no visual violations) and let the verdict complete.
     # Кадр без разбора считается непрочитанным (_count) — см. vision_stats().
+    rescued = False
     try:
         description = vision_describe_frame(frame_path, DESCRIBE_PROMPT)
     except Exception as e:
-        print(f"  vision failed for {frame_path} (skipping frame): {e}")
-        _count(failed=True)
-        return {"ocr_text": "", "visual_violations": []}
+        # NIM уронил кадр. Раньше здесь кадр терялся, и на трети кадров это
+        # пробивало гейт слепых вердиктов — заявка уходила модератору руками.
+        # Теперь пробуем дочитать его Gemini (вариант C): платим только за
+        # сбойные кадры. Нет ключа — ведём себя ровно как раньше.
+        if not gemini.available():
+            print(f"  vision failed for {frame_path} (skipping frame): {e}")
+            _count(failed=True)
+            return {"ocr_text": "", "visual_violations": []}
+        try:
+            description = gemini.describe_frame(frame_path, DESCRIBE_PROMPT)
+            rescued = True
+            print(f"  vision: NIM отказал ({type(e).__name__}), кадр дочитан Gemini")
+        except Exception as e2:
+            print(f"  vision failed for {frame_path} (skipping frame): NIM {e}; Gemini {e2}")
+            _count(failed=True)
+            return {"ocr_text": "", "visual_violations": []}
     try:
         out = text_check(CLASSIFY_PROMPT, description)
     except Exception as e:
         print(f"  policy classify failed for {frame_path} (skipping frame): {e}")
         _count(failed=True)
         return {"ocr_text": "", "visual_violations": [], "_raw": description[:500]}
-    _count(failed=False)
+    _count(failed=False, rescued=rescued)
     return out
 
 

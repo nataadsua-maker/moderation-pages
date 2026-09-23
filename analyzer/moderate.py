@@ -240,6 +240,9 @@ def run(submission_id: str) -> None:
             )
         if st["failed"]:
             print(f"  vision: пропущено {st['failed']} из {st['attempted']} кадров (в пределах порога)")
+        # Счётчик расхода на запасной путь: платим ровно за эти кадры.
+        if st.get("rescued"):
+            print(f"  vision: {st['rescued']} из {st['attempted']} кадров уронил NIM, дочитал Gemini")
 
         # Mark subtitle-style OCR (duplicates voiceover) so the report only shows real plашки.
         subtitle_filter.annotate_frames(videos)
