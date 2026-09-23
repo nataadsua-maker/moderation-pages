@@ -23,7 +23,19 @@ TEXT_MODEL = os.environ.get("NIM_TEXT_MODEL", "nvidia/nemotron-3-super-120b-a12b
 # Зависшая модель не должна съедать бюджет шага: 3 ретрая по 120с = 6 минут на
 # ОДИН кадр, и 20-минутный timeout-minutes выгорает на второй-третьей картинке.
 VISION_TIMEOUT = int(os.environ.get("NIM_VISION_TIMEOUT", "45"))
-VISION_RETRIES = int(os.environ.get("NIM_VISION_RETRIES", "2"))
+# 23.09.2026 (вечер): следом за текстовой просела и vision — 500 "Inference
+# connection error" и read timeout. На перепрогоне REQ-260923-203 из 48 кадров
+# 17 остались непрочитанными (14 из них vision), порог 30% пробит, заявка снова
+# упала. Двух попыток мало: замер по живому ключу даёт ~17% отказов на запрос.
+# Ключевое наблюдение — отказ 500 прилетает за 0.4с, а не по таймауту, поэтому
+# лишние попытки почти ничего не стоят: 4 попытки роняют потери с ~9% до ~1%.
+VISION_RETRIES = int(os.environ.get("NIM_VISION_RETRIES", "4"))
+# ...но защиту от ЗАВИСШЕЙ модели (тот самый сценарий 90B, ради которого попыток
+# и было всего две) терять нельзя: 4 попытки × 45с = 3 минуты на один кадр.
+# Поэтому ретраи ограничены не только числом, но и общим временем на вызов:
+# быстрые 500 успевают отработать все попытки, а таймауты обрываются после
+# второго. Худший кадр ограничен сверху и не съедает бюджет шага.
+VISION_BUDGET = float(os.environ.get("NIM_VISION_BUDGET", "90"))
 
 # 23.09.2026: наплыв заявок (18 прогонов за 15 минут против обычных 3-5) выбил
 # бесплатный ключ NVIDIA в 429 — 60 отказов из 62 пришлись на текстовый шаг
@@ -62,9 +74,12 @@ def _headers() -> dict[str, str]:
     }
 
 
-def _post_chat(payload: dict, timeout: int = TEXT_TIMEOUT, retries: int = TEXT_RETRIES) -> dict:
+def _post_chat(payload: dict, timeout: int = TEXT_TIMEOUT, retries: int = TEXT_RETRIES,
+               budget: float | None = None) -> dict:
     # NVIDIA NIM occasionally times out or returns 429/5xx — retry with backoff
     # instead of letting one flaky call abort the whole submission.
+    # budget — потолок общего времени на вызов со всеми ретраями (см. VISION_BUDGET).
+    started = time.monotonic()
     last = None
     for attempt in range(retries):
         resp = None
@@ -80,6 +95,8 @@ def _post_chat(payload: dict, timeout: int = TEXT_TIMEOUT, retries: int = TEXT_R
         except requests.exceptions.RequestException as e:
             last = e
         if attempt < retries - 1:
+            if budget is not None and time.monotonic() - started >= budget:
+                break  # время вышло — дальше ретраить дороже, чем пропустить кадр
             time.sleep(_backoff_delay(attempt, resp))
     raise last if last else RuntimeError("NIM failed")
 
@@ -100,7 +117,7 @@ def vision_describe_frame(frame_path: Path, question: str) -> str:
         "max_tokens": 800,
         "temperature": 0.2,
     }
-    data = _post_chat(payload, timeout=VISION_TIMEOUT, retries=VISION_RETRIES)
+    data = _post_chat(payload, timeout=VISION_TIMEOUT, retries=VISION_RETRIES, budget=VISION_BUDGET)
     return data["choices"][0]["message"]["content"].strip()
 
 

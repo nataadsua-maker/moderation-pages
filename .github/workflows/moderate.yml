@@ -79,7 +79,11 @@ jobs:
 
       - name: Run analyzer
         id: analyzer
-        timeout-minutes: 20
+        # 20 -> 25: при VISION_CONCURRENCY=2 тяжёлая заявка (48 кадров, 6 видео)
+        # считается ~13 мин, а ретраи vision добавляют сверху. Потолок job — 30,
+        # так что 5 минут запаса остаётся: шаг должен именно ПАДАТЬ по своему
+        # таймауту, иначе job отменится и "Report analysis failure" не сработает.
+        timeout-minutes: 25
         env:
           SUBMISSION_ID: ${{ steps.sid.outputs.submission_id }}
           WORKER_URL: ${{ vars.WORKER_URL }}
