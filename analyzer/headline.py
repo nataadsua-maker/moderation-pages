@@ -6,8 +6,15 @@
 всё уже должно быть готово, кнопка — механическое действие, а не вторая проверка.
 
 Два разных вида проблем, по решению Nataliia:
-- МУСОР (эмодзи, лишние точки, случайные вставки типа «Compliance Reviewer») —
-  чистим молча, без вопросов баеру и без реджекта.
+- МУСОР — чистим молча, без вопросов баеру и без реджекта: эмодзи, лишние точки,
+  известные мусорные вставки («Compliance Reviewer» — наш старый баг vision),
+  манипулятивные фразы-крючки («Oh my god», «I really wish we'd known sooner» —
+  партнёрка их зовёт Regret Clickbait), случайные короткие токены между точками
+  («.lg lg.» — партнёрка зовёт Stray Tracking Tokens; фильтр только по форме
+  токена, не по смыслу — настоящую короткую фразу вроде «take a look» не трогает).
+  Фразы-«человеческие комментарии не по адресу» вроде «marthue's card» сюда
+  намеренно НЕ входят — грамматически нормальны, отличить их от настоящего
+  текста может только смысловая проверка, не regex; пока не покрыто.
 - СМЫСЛ (утверждает то, чего нет на лендинге; подразумевает скидку/товар) —
   это не список запрещённых слов, а вопрос соответствия лендингу. Через эту
   чистку НЕ проходит — уходит на суд той же ИИ-проверки, что уже судит
@@ -53,6 +60,43 @@ _GIBBERISH_RE = re.compile(
     r"\b(compliance reviewer( reviewing the video)?|reviewing the video)\b", re.IGNORECASE
 )
 
+# Манипулятивные фразы-крючки (партнёрка: «Regret Clickbait & Sensationalism» —
+# «I really wish we'd known sooner», «Oh my god», «Honestly, I'm shocked»).
+# Стартовый список по их примерам, 29.09.2026 — дополнять по новым находкам.
+# Смысловая часть кликбейта (панические формулировки про симптомы/диагнозы) сюда
+# НЕ входит — это решает уже существующая смысловая проверка, не список фраз.
+_CLICKBAIT_RE = re.compile(
+    r"\b(i really wish we'?d known sooner|oh my god|honestly,? i'?m shocked)\b", re.IGNORECASE
+)
+
+# Короткие бессмысленные токены между точками (партнёрка: «.lg lg.» — «Stray
+# Tracking Tokens: non-advertised backend keywords»). Ловим ТОЛЬКО сегменты, где
+# каждое слово ≤3 символов и это не обычное короткое английское слово — настоящая
+# короткая фраза («take a look», «50% off», «new») почти всегда мимо этого фильтра
+# (хотя бы одно слово длиннее 3 символов или из белого списка). Фразы-«человеческие
+# комментарии не по адресу» вроде «marthue's card» сюда НЕ попадают намеренно —
+# они грамматически нормальны, отличить их от настоящего текста может только
+# смысловая проверка (см. ASSEMBLED HEADLINE в llm_checks.py), не regex.
+_SHORT_WORD_WHITELIST = {
+    "a", "an", "is", "to", "at", "in", "on", "of", "by", "or", "we", "it", "up", "no", "so",
+    "ok", "go", "new", "off", "now", "see", "buy", "get", "try", "top", "for", "and", "the",
+    "you", "use", "hot", "win", "fun", "fix", "add", "end", "yes", "why", "how",
+}
+
+
+def _looks_like_stray_token(segment: str) -> bool:
+    words = re.findall(r"[a-zA-Z']+", segment.lower())
+    if not words or len(words) > 3:
+        return False
+    return all(len(w) <= 3 and w not in _SHORT_WORD_WHITELIST for w in words)
+
+
+def strip_stray_tokens(s: str) -> str:
+    """Вырезать сегменты между точками, похожие на случайные технические токены."""
+    parts = s.split(".")
+    kept = [p for p in parts if not _looks_like_stray_token(p)]
+    return ".".join(kept)
+
 
 def clean_syntax(s: str) -> str:
     """Двойные/тройные точки → одна; точка без пробела перед словом → добавляем
@@ -62,12 +106,23 @@ def clean_syntax(s: str) -> str:
     return s
 
 
+def _tidy_seams(s: str) -> str:
+    """После вырезания куска из середины строки остаётся шов — лишняя точка,
+    двойной пробел или точка в самом начале/конце. Подчищаем."""
+    s = re.sub(r"\.{2,}", ".", s)
+    s = re.sub(r"\.\s*\.", ".", s)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip(" .")
+
+
 def strip_gibberish(s: str) -> str:
     s = _GIBBERISH_RE.sub("", s)
-    # Мусорная вставка могла оставить после себя одинокую точку/пробел на стыке.
-    s = re.sub(r"\.\s*\.", ".", s)
-    s = re.sub(r"\s{2,}", " ", s).strip(" .")
-    return s
+    return _tidy_seams(s)
+
+
+def strip_clickbait(s: str) -> str:
+    s = _CLICKBAIT_RE.sub("", s)
+    return _tidy_seams(s)
 
 
 def _lines(s: str) -> list[str]:
@@ -115,6 +170,11 @@ def build_headline(sub: dict, videos: list[dict]) -> str:
 
 def build_clean_headline(sub: dict, videos: list[dict]) -> str:
     """То, что реально уйдёт в трекер: сборка + чистка мусора (эмодзи уже вырезаны
-    внутри build_headline, здесь докручиваем синтаксис и мусорные вставки)."""
+    внутри build_headline, здесь докручиваем синтаксис, кликбейт-фразы, случайные
+    короткие токены и мусорные вставки — все молча, без реджекта)."""
     raw = build_headline(sub, videos)
-    return strip_gibberish(clean_syntax(raw))
+    s = clean_syntax(raw)
+    s = strip_clickbait(s)
+    s = strip_stray_tokens(s)
+    s = strip_gibberish(s)
+    return _tidy_seams(s)
