@@ -24,7 +24,8 @@ def post_media_analysis(submission_id: str, media_analysis: list) -> None:
     r.raise_for_status()
 
 
-def post_verdict(submission_id: str, verdict: dict, page_url: str, media_analysis: list | None = None, notify: bool = True) -> None:
+def post_verdict(submission_id: str, verdict: dict, page_url: str, media_analysis: list | None = None,
+                 notify: bool = True, headline: str = "") -> None:
     url = f"{os.environ['WORKER_URL']}/api/verdict"
     payload = {
         "submission_id": submission_id,
@@ -33,5 +34,10 @@ def post_verdict(submission_id: str, verdict: dict, page_url: str, media_analysi
         "media_analysis": media_analysis or [],
         "notify": notify,
     }
+    # headline — уже проверенная строка для System1 (см. headline.py). Пустая
+    # строка (заявка без крео/видео) — не шлём поле вовсе, воркер оставит
+    # старое поведение (посчитает сам при запуске, как раньше).
+    if headline:
+        payload["headline"] = headline
     r = requests.post(url, headers=_headers(), json=payload, timeout=60)
     r.raise_for_status()

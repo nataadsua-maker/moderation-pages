@@ -22,6 +22,7 @@ from pathlib import Path
 
 import api_client
 import drive
+import headline as headline_mod
 import lander as lander_mod
 import llm_checks
 import r2_client
@@ -64,7 +65,7 @@ def numeric_sources_of(sub: dict, videos: list[dict]) -> list[tuple[str, str]]:
 
 
 def layer2_check(sub: dict, lander: dict, videos: list[dict],
-                 numeric_claims: list[str], src: str | None) -> dict:
+                 numeric_claims: list[str], src: str | None, assembled_headline: str = "") -> dict:
     """Layer 2 с общей страховкой: недоступный ленд = ручная проверка, не аппрув."""
     lander_text_len = len(lander.get("text", "") or "")
     if not lander.get("ok", False) or lander_text_len < 200:
@@ -84,7 +85,8 @@ def layer2_check(sub: dict, lander: dict, videos: list[dict],
             "confidence": 0.0,
             "_skipped": "lander_unavailable",
         }
-    l2 = llm_checks.check(sub, lander, videos, numeric_claims=numeric_claims, platform=src)
+    l2 = llm_checks.check(sub, lander, videos, numeric_claims=numeric_claims, platform=src,
+                          assembled_headline=assembled_headline)
     print(f"  layer 2 violations: {len(l2.get('violations') or [])}")
     return l2
 
@@ -125,6 +127,9 @@ def run_archive_copy(sub: dict, lander: dict) -> None:
     videos = videos_from_media_analysis(media)
     print(f"[2/4] Разбор крео из исходной заявки: {len(videos)} шт.")
 
+    # Склейка для System1 (headline) — судим её вместе с остальным, до одобрения.
+    assembled_headline = headline_mod.build_clean_headline(sub, videos)
+
     numeric_sources = numeric_sources_of(sub, videos)
     numeric_claims: list[str] = []
     for _, txt in numeric_sources:
@@ -132,7 +137,7 @@ def run_archive_copy(sub: dict, lander: dict) -> None:
 
     print("[3/4] Проверка соответствия ленду")
     src = text_policy.norm_platform(sub.get("platform"))
-    l2 = layer2_check(sub, lander, videos, numeric_claims, src)
+    l2 = layer2_check(sub, lander, videos, numeric_claims, src, assembled_headline)
     kept = [v for v in (l2.get("violations") or [])
             if v.get("policy_section") in RELEVANCE_SECTIONS]
     dropped = len(l2.get("violations") or []) - len(kept)
@@ -155,7 +160,7 @@ def run_archive_copy(sub: dict, lander: dict) -> None:
     notify = os.environ.get("SILENT", "").lower() not in ("1", "true", "yes")
     # media_analysis шлём тот же, что и пришёл: у копии он унаследован от исходной
     # заявки, и пустой список его бы затёр.
-    api_client.post_verdict(sub["id"], v, page_url, media, notify=notify)
+    api_client.post_verdict(sub["id"], v, page_url, media, notify=notify, headline=assembled_headline)
     print(f"  done (notify={notify})")
 
 
@@ -247,6 +252,12 @@ def run(submission_id: str) -> None:
         # Mark subtitle-style OCR (duplicates voiceover) so the report only shows real plашки.
         subtitle_filter.annotate_frames(videos)
 
+        # Склейка для System1 (headline: заголовок+описание+плашка+озвучка+кнопка) —
+        # решение Nataliia 29.09.2026: судим её тем же вызовом ИИ-проверки, ДО одобрения
+        # заявки. Кнопка «Отправить в трекер» на форме запуска после этого просто берёт
+        # готовое, вторую проверку там заводить не нужно.
+        assembled_headline = headline_mod.build_clean_headline(sub, videos)
+
         print("[5/9] Layer 1 regex scan (creative only — lander is partner's responsibility)")
         l1: list[dict] = []
         src = text_policy.norm_platform(sub.get("platform"))
@@ -277,7 +288,7 @@ def run(submission_id: str) -> None:
             numeric_claims += text_policy.extract_money_claims(txt)
 
         print("[6/9] Layer 2 LLM checks")
-        l2 = layer2_check(sub, lander, videos, numeric_claims, src)
+        l2 = layer2_check(sub, lander, videos, numeric_claims, src, assembled_headline)
 
         # Tier-1 deterministic numeric backstop — only when the lander is actually
         # available (otherwise every number would falsely fail). When the lander is
@@ -327,7 +338,7 @@ def run(submission_id: str) -> None:
         worker_url = os.environ["WORKER_URL"]
         page_url = f"{worker_url}/sub/{sub['id']}"
         notify = os.environ.get("SILENT", "").lower() not in ("1", "true", "yes")
-        api_client.post_verdict(sub["id"], v, page_url, media_analysis, notify=notify)
+        api_client.post_verdict(sub["id"], v, page_url, media_analysis, notify=notify, headline=assembled_headline)
         print(f"  done (notify={notify})")
 
 

@@ -125,6 +125,22 @@ If you are uncertain about a CHECKABLE FACT (would set confidence < 0.7) — DO 
 Either include the borderline finding as a violation, or explicitly add:
 {"where": "Проверка соответствия", "quote": "", "reason": "Требуется ручная проверка модератором.", "policy_section": "manual_review", "category": "standard"}
 
+=== ASSEMBLED HEADLINE (если поле `assembled_headline` есть в payload) ===
+Решение Nataliia, 29.09.2026. Помимо отдельных полей (Adtitle/Description/озвучка/плашки),
+после одобрения система склеивает их в ОДНУ строку для партнёрской площадки: первая строка
+Adtitle + первая строка Description + первая не-субтитровая плашка + озвучка первого ролика +
+кнопка, через точку. Баер этого поля никогда не видит и не заполняет — это внутренняя механика,
+ей нельзя палиться в ответе (см. правило нигде не упоминать «трекер»/«headline»/«партнёрку»).
+Судишь эту склейку ПО ТЕМ ЖЕ Golden Rules, что и остальное — особенно правило 1 (Ad-to-Page
+Match) и правило 2c (предложение/скидка/товар, которых на лендинге нет): части по отдельности
+могли пройти проверку, а вместе — создать конкретное утверждение, которого ни в одной части не
+было (пример: заголовок называет тему, описание добавляет деталь, плашка добавляет ещё одну — по
+отдельности нейтрально, вместе получается точный claim, которого на лендинге нет).
+Нашла нарушение в склейке — `where` ставь на ТУ исходную часть текста (`Adtitle` / `Description`
+/ `Плашка Video N MM:SS` / `Видео N, MM:SS озвучка`), которая внесла проблемную деталь, НИКОГДА
+`where` = "assembled_headline"/"headline"/что-то про склейку или трекер — баер о ней не знает,
+для него это обычное нарушение в обычном поле, которое он и так видит и правит.
+
 === OUTPUT ===
 STRICT JSON ONLY:
 {
@@ -175,8 +191,15 @@ This submission runs on Newsbreak. For THIS source only:
 
 
 def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: list[str] | None = None,
-          platform: str | None = None) -> dict:
-    """Returns dict matching the schema in SYSTEM_PROMPT."""
+          platform: str | None = None, assembled_headline: str = "") -> dict:
+    """Returns dict matching the schema in SYSTEM_PROMPT.
+
+    assembled_headline — склеенная строка для System1 (headline.build_clean_headline),
+    судится тем же вызовом заодно с остальным крео. См. "=== ASSEMBLED HEADLINE ===" в
+    промпте: решение Nataliia 29.09.2026 — проверка должна закончиться ДО одобрения
+    заявки, а не когда баер жмёт «Отправить в трекер» (та кнопка — уже без проверки,
+    берёт готовое). Пустая строка — просто не передаём (старый путь, ничего не меняется).
+    """
     payload = {
         "creative": {
             "adtitle": submission["adtitle"],
@@ -204,6 +227,8 @@ def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: li
             "text": lander["text"][:8000],
         },
     }
+    if assembled_headline:
+        payload["assembled_headline"] = assembled_headline
     try:
         return text_check(_system_prompt(platform), json.dumps(payload, ensure_ascii=False))
     except Exception as e:
