@@ -129,6 +129,39 @@ def _lines(s: str) -> list[str]:
     return [x.strip() for x in re.split(r"\r?\n", s or "") if x.strip()]
 
 
+def _ocr_tokens(s: str) -> set[str]:
+    """Нормализация для сверки «тот же текст на другом кадре» — тот же принцип,
+    что и в subtitle_filter._normalize (без цифр/пунктуации, нижний регистр)."""
+    s = re.sub(r"[^a-zA-Zа-яА-Я0-9\s]", " ", (s or "").lower())
+    return set(s.split())
+
+
+def _is_stable_overlay(idx: int, frames: list[dict], min_overlap: float = 0.7) -> bool:
+    """Настоящая плашка держится на экране несколько секунд и попадает минимум
+    в 2 из 8 равномерно взятых кадров (video.extract_frames). Находка только на
+    ОДНОМ кадре — почти всегда либо галлюцинация vision, либо случайная деталь
+    сцены (бейджик, вывеска на фоне), а не текст, который баер специально
+    наложил. Решение Nataliia 30.09.2026: такую находку в headline не берём —
+    не спрашиваем баера, чинится само по данным, которые уже есть.
+    Реальный случай-эталон: REQ-260911-104 «SUPER TRUCKS» — чистая галлюцинация
+    на одном кадре, второй раз нигде не встречалась.
+    Только для видео — на картинках кадр один, сверять не с чем, там
+    распознавание и так надёжное (не трогаем, решение Nataliia)."""
+    target = _ocr_tokens(frames[idx].get("ocr_text"))
+    if not target:
+        return False
+    for j, fr in enumerate(frames):
+        if j == idx or not fr.get("ocr_text"):
+            continue
+        other = _ocr_tokens(fr["ocr_text"])
+        if not other:
+            continue
+        overlap = len(target & other) / max(len(target), len(other))
+        if overlap >= min_overlap:
+            return True
+    return False
+
+
 def build_headline(sub: dict, videos: list[dict]) -> str:
     """Сырая сборка — порт buildHeadline() из clickflare_s1.ts построчно.
 
@@ -139,12 +172,20 @@ def build_headline(sub: dict, videos: list[dict]) -> str:
     функция ниже работает на обоих путях без изменений.
     """
     # Первая НЕ-субтитровая плашка, в порядке видео → порядок кадров внутри видео.
+    # На видео дополнительно требуем, чтобы та же плашка встретилась ещё хотя бы
+    # на одном кадре ЭТОГО ЖЕ видео (см. _is_stable_overlay) — иначе пропускаем
+    # кандидата и идём к следующему, а не берём случайную деталь кадра.
     overlay = ""
     for v in videos:
-        for fr in v.get("frames_analysis") or []:
-            if fr.get("ocr_text") and not fr.get("is_subtitle"):
-                overlay = fr["ocr_text"].strip()
-                break
+        frames = v.get("frames_analysis") or []
+        is_video = v.get("kind") != "image"
+        for idx, fr in enumerate(frames):
+            if not (fr.get("ocr_text") and not fr.get("is_subtitle")):
+                continue
+            if is_video and not _is_stable_overlay(idx, frames):
+                continue
+            overlay = fr["ocr_text"].strip()
+            break
         if overlay:
             break
 
