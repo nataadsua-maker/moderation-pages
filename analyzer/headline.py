@@ -67,13 +67,29 @@ _GIBBERISH_RE = re.compile(
 # живой заявки — список ловил только «god», не смягчённые синонимы. Добавила
 # gosh/goodness/lord — тот же приём, что уже встречался в разборе партнёрки
 # («oh my lord!» в примере с чехлами для обуви).
+# 30.09.2026 вечером: сверила с полным списком категорий партнёрки (колонка
+# Sensationalism/Fear & Clickbait) — добавила два незакрытых паттерна:
+# Cliffhanger clickbait («you won't believe / never believe me», 5 находок) и
+# Conversational urgency hook («okay, i just found out...», 4 находки).
+# «Never believe me» без уточнения НЕ берём отдельным паттерном — это ломало
+# легитимный рассказ от первого лица («people never believe me when i tell
+# them there's a whole house» — ровно кейс из теста этого файла, его нельзя
+# трогать). Берём только явное обращение ко второму лицу — «you won't/never
+# believe» — это однозначно крючок, а не рассказ.
+# Ещё две категории партнёрки намеренно НЕ сюда: «Emotional hook ('dreaded
+# paying')» — единственный пример, нет общей формулы, рискованно обобщать;
+# «Personalized diagnostic alarmism» (мед-паника по симптомам) — это не фраза-
+# мусор, а содержательная проблема, её ловит смысловая проверка, не эта чистка.
+#
 # Смысловая часть кликбейта (панические формулировки про симптомы/диагнозы) сюда
 # НЕ входит — это решает уже существующая смысловая проверка, не список фраз.
 # `,?\s*` в конце — запятая сразу после фразы («oh my gosh, did you know») это
 # часть самого крючка, а не следующего предложения; без этого после вырезания
 # оставался висячий шов «voice. , did you know» (нашла живьём 30.09.2026).
 _CLICKBAIT_RE = re.compile(
-    r"\b(?:i really wish we'?d known sooner|oh my (?:god|gosh|goodness|lord)|honestly,? i'?m shocked)\b,?\s*",
+    r"\b(?:i really wish we'?d known sooner|oh my (?:god|gosh|goodness|lord)|honestly,? i'?m shocked"
+    r"|you(?:'ll)? (?:won'?t|never) believe"
+    r"|okay,? i (?:just )?(?:found out|realized|discovered))\b,?\s*",
     re.IGNORECASE,
 )
 
