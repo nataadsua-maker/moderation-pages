@@ -238,6 +238,11 @@ def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: li
         # FAIL-CLOSED: a crashed LLM call must NOT silently approve. The Ad-to-Page /
         # identity / promises / numbers checks are top priority — if we couldn't run
         # them, force the submission to a human instead of letting it pass.
+        # category="system_error" (не "standard"): это НЕ мягкая неопределённость
+        # вроде недоступного ленда — проверку вообще никто не выполнил. Жалоба
+        # Nataliia 30.09.2026: баннер писал «нужна ручная проверка», а статус тихо
+        # становился «одобрено» — самоодобрение админа (selfModerated в index.ts)
+        # не должно срабатывать на настоящий сбой, только на безобидные случаи.
         return {
             "violations": [{
                 "where": "Проверка соответствия",
@@ -247,7 +252,7 @@ def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: li
                 "reason": "Автоматическая проверка соответствия лендингу не отработала (сбой LLM). Нужна ручная проверка модератором.",
                 "how_to_fix": "",
                 "policy_section": "manual_review",
-                "category": "standard",
+                "category": "system_error",
             }],
             "confidence": 0.0,
             "_error": str(e),
