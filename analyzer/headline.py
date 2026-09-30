@@ -63,10 +63,18 @@ _GIBBERISH_RE = re.compile(
 # Манипулятивные фразы-крючки (партнёрка: «Regret Clickbait & Sensationalism» —
 # «I really wish we'd known sooner», «Oh my god», «Honestly, I'm shocked»).
 # Стартовый список по их примерам, 29.09.2026 — дополнять по новым находкам.
+# 30.09.2026: «oh my gosh» (смягчённый вариант «oh my god») проскочил в headline
+# живой заявки — список ловил только «god», не смягчённые синонимы. Добавила
+# gosh/goodness/lord — тот же приём, что уже встречался в разборе партнёрки
+# («oh my lord!» в примере с чехлами для обуви).
 # Смысловая часть кликбейта (панические формулировки про симптомы/диагнозы) сюда
 # НЕ входит — это решает уже существующая смысловая проверка, не список фраз.
+# `,?\s*` в конце — запятая сразу после фразы («oh my gosh, did you know») это
+# часть самого крючка, а не следующего предложения; без этого после вырезания
+# оставался висячий шов «voice. , did you know» (нашла живьём 30.09.2026).
 _CLICKBAIT_RE = re.compile(
-    r"\b(i really wish we'?d known sooner|oh my god|honestly,? i'?m shocked)\b", re.IGNORECASE
+    r"\b(?:i really wish we'?d known sooner|oh my (?:god|gosh|goodness|lord)|honestly,? i'?m shocked)\b,?\s*",
+    re.IGNORECASE,
 )
 
 # Короткие бессмысленные токены между точками (партнёрка: «.lg lg.» — «Stray
