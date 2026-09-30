@@ -76,8 +76,11 @@ def vision_stats() -> dict:
 # донат вещей ветеранам, вообще не по теме. Узкое правило (не переписывать
 # промпт целиком, решение Nataliia 30.09.2026): текст на одежде/бейджике
 # человека — это ON-SCREEN TEXT никогда не собирает, только настоящая графика
-# поверх видео. Если проблема повторится на другом виде сцены (номер дома,
-# упаковка товара) — расширять этот же список, не переписывать правило заново.
+# поверх видео. Тем же вечером список сразу расширили на остальные типовые
+# «текст в реальном мире, не плашка», не дожидаясь, пока поймается вживую:
+# номер дома/почтовый ящик/табличка на двери, упаковка/этикетка товара, вывеска
+# магазина, номер машины. Найдётся ещё один вид — так же дописывать в этот
+# список, не переписывать правило заново.
 DESCRIBE_PROMPT = """Describe this single frame from a video. Report only what is literally visible in the image.
 
 1. In a section "ON-SCREEN TEXT:", transcribe every piece of text that is actually rendered in
@@ -85,11 +88,13 @@ DESCRIBE_PROMPT = """Describe this single frame from a video. Report only what i
    picture. Never write text that is not in the image, and never invent a product, brand or
    slogan. If the image contains no readable text at all, write exactly: ON-SCREEN TEXT: none
    EXCLUDE text that is physically printed on something a person is wearing or holding — a
-   t-shirt, uniform, name badge, lanyard, cap, sign a person carries. That is a detail of the
-   SCENE (describe it in section 2 instead), not a caption added by the advertiser, even when
-   it is legible. Only list text here that is a graphic overlay drawn on top of the footage
-   (a caption, banner, subtitle, or UI element) — not text that exists on a real physical
-   object filmed in the shot.
+   t-shirt, uniform, name badge, lanyard, cap, sign a person carries. Also EXCLUDE text that is
+   part of the physical world being filmed: a house/street number, a mailbox, a door plate, a
+   product's own packaging/label/box, a storefront sign, a vehicle license plate. All of that is
+   a detail of the SCENE (describe it in section 2 instead), not a caption added by the
+   advertiser, even when it is legible. Only list text here that is a graphic overlay drawn on
+   top of the footage (a caption, banner, subtitle, or UI element) — not text that exists on a
+   real physical object filmed in the shot.
 2. In a section "SCENE:", describe what is shown: people (clothing, pose, how much skin is
    visible, whether the framing is sexualized), objects, setting, product.
 3. In a section "OVERLAYS:", list any graphics drawn ON TOP of the footage: arrows, circles or
