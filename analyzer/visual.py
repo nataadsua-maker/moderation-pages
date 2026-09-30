@@ -68,12 +68,28 @@ def vision_stats() -> dict:
 # Заодно прямой запрет выдумывать текст: 11b на пустом кадре склонна дописывать
 # правдоподобное. Пустая плашка безопасна, выдуманная — нет: она и висит на
 # карточке, и уезжает первой строкой в headline оффера при заводе в трекер.
+#
+# Текст сцены (вывеска, бейджик, надпись на одежде) иногда принимается за плашку —
+# разбирали 11-13.09, тогда отложили. Живой пример поймала 30.09.2026 на
+# REQ-260930-035/175: женщина в футболке волонтёрского центра с надписью
+# «Volunteer…» на груди, это дало 5 «плашек» про волонтёров на оффере про
+# донат вещей ветеранам, вообще не по теме. Узкое правило (не переписывать
+# промпт целиком, решение Nataliia 30.09.2026): текст на одежде/бейджике
+# человека — это ON-SCREEN TEXT никогда не собирает, только настоящая графика
+# поверх видео. Если проблема повторится на другом виде сцены (номер дома,
+# упаковка товара) — расширять этот же список, не переписывать правило заново.
 DESCRIBE_PROMPT = """Describe this single frame from a video. Report only what is literally visible in the image.
 
 1. In a section "ON-SCREEN TEXT:", transcribe every piece of text that is actually rendered in
    this image, verbatim, each caption on its own line. Only text you can literally read in the
    picture. Never write text that is not in the image, and never invent a product, brand or
    slogan. If the image contains no readable text at all, write exactly: ON-SCREEN TEXT: none
+   EXCLUDE text that is physically printed on something a person is wearing or holding — a
+   t-shirt, uniform, name badge, lanyard, cap, sign a person carries. That is a detail of the
+   SCENE (describe it in section 2 instead), not a caption added by the advertiser, even when
+   it is legible. Only list text here that is a graphic overlay drawn on top of the footage
+   (a caption, banner, subtitle, or UI element) — not text that exists on a real physical
+   object filmed in the shot.
 2. In a section "SCENE:", describe what is shown: people (clothing, pose, how much skin is
    visible, whether the framing is sexualized), objects, setting, product.
 3. In a section "OVERLAYS:", list any graphics drawn ON TOP of the footage: arrows, circles or
