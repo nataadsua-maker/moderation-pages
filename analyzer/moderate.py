@@ -25,6 +25,7 @@ import drive
 import headline as headline_mod
 import lander as lander_mod
 import llm_checks
+import mimo_video
 import r2_client
 import subtitle_filter
 import text_policy
@@ -33,6 +34,7 @@ import translate
 import verdict as verdict_mod
 import video as video_mod
 import visual
+from concurrent.futures import ThreadPoolExecutor
 
 
 # Доля кадров, которые допустимо не разобрать и всё же выдать вердикт.
@@ -45,6 +47,57 @@ VISION_FAILURE_LIMIT = float(os.environ.get("VISION_FAILURE_LIMIT", "0.3"))
 # визуал, нет вовсе. Правило Nataliia. 2.1/4.4 — это и есть Ad-to-Page Match,
 # manual_review оставляем: так модель говорит «сама не уверена».
 RELEVANCE_SECTIONS = {"2.1", "4.4", "manual_review"}
+
+# Сколько видео этой заявки разбираем у MiMo одновременно. Один вызов MiMo
+# заменяет весь по-кадровый OCR-проход того видео (не 8 запросов, а 1), так что
+# жёсткая конкуренция тут не так рискованна, как была у по-кадрового NIM
+# (VISION_CONCURRENCY в visual.py) — но повторные попытки при обрыве ответа
+# (см. mimo_video.detect_overlays) всё равно могут занимать минуты, поэтому
+# ограничиваем, а не гоняем все видео заявки разом.
+MIMO_CONCURRENCY = int(os.environ.get("MIMO_CONCURRENCY", "2"))
+
+
+def apply_mimo_overlays(videos: list[dict], local_assets: list[Path]) -> None:
+    """Мутирует videos[i]["frames_analysis"] IN PLACE: там, где MiMo успешно
+    разобрал видео, глушит старый по-кадровый OCR-текст (шум/дрейф/галлюцинации
+    per-frame NIM) и добавляет вместо него уже проверенные оверлеи от MiMo —
+    помеченные mimo_verified=True, чтобы headline.py не гонял по ним повторно
+    свою проверку стабильности (_is_stable_overlay), рассчитанную на дрейф
+    именно по-кадрового OCR, которого у MiMo нет.
+
+    visual_violations (policy: arrows/fake_ui/shock/gambling/weapons/18+ и т.п.)
+    на старых frames_analysis не трогаем — MiMo их не проверяет, эту часть
+    по-прежнему решает per-frame NIM-проход.
+
+    Видео, на которых MiMo не осилил (нет ключа / сбой / не распарсился ответ
+    после повтора — см. mimo_video.detect_overlays, возвращает None) — остаются
+    как есть, старый по-кадровый путь работает ровно как раньше, фолбэк
+    автоматический и бесшовный."""
+    video_items = [(i, v, local) for i, (v, local) in enumerate(zip(videos, local_assets))
+                   if v.get("kind") != "image"]
+    if not video_items:
+        return
+    workers = max(1, min(MIMO_CONCURRENCY, len(video_items)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda item: mimo_video.detect_overlays(item[2]), video_items))
+    for (idx, v, local), overlays in zip(video_items, results):
+        if overlays is None:
+            print(f"  asset {idx+1}: MiMo недоступен/не осилил, остаёмся на по-кадровом OCR")
+            continue
+        print(f"  asset {idx+1}: MiMo нашёл {len(overlays)} оверле{'й' if len(overlays) != 1 else 'й'}")
+        for fr in v["frames_analysis"]:
+            fr["ocr_text"] = ""
+        for o in overlays:
+            v["frames_analysis"].append({
+                "ts": o["ts"],
+                "ts_sec": o.get("ts_sec", 0),
+                "ocr_text": o["text"],
+                "is_subtitle": False,  # досчитает subtitle_filter.annotate_frames ниже по пайплайну
+                "visual_violations": [],
+                "adult_explicit": False,
+                "adult_score": 0.0,
+                "mimo_verified": True,
+            })
 
 
 def numeric_sources_of(sub: dict, videos: list[dict]) -> list[tuple[str, str]]:
@@ -232,6 +285,13 @@ def run(submission_id: str) -> None:
             n = len(v["frames"])
             print(f"  asset {i+1}: vision analyze {n} frame{'s' if n != 1 else ''}")
             v["frames_analysis"] = visual.analyze_video_frames(v["frames"])
+
+        # Phase 2.5 — MiMo video-native overlay detection (замена по-кадровому OCR
+        # ДЛЯ ТЕКСТА плашек — решение Nataliia 02.10.2026, см. mimo_video.py).
+        # Per-frame vision выше остаётся единственным источником policy-находок
+        # (arrow_or_circle/fake_ui/shock/gambling/weapons/18+ и т.п.) — это MiMo не
+        # проверяет и не должен, его тут не трогаем.
+        apply_mimo_overlays(videos, local_assets)
 
         # Vision мог тихо отвалиться на всех кадрах (так было при отказе NIM 10-19.08):
         # тогда пустой OCR читается дальше как «на кадрах ничего запрещённого нет», и

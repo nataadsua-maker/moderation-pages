@@ -206,7 +206,10 @@ def build_headline(sub: dict, videos: list[dict]) -> str:
         for idx, fr in enumerate(frames):
             if not (fr.get("ocr_text") and not fr.get("is_subtitle")):
                 continue
-            if is_video and not _is_stable_overlay(idx, frames):
+            # mimo_verified — эта запись пришла из видео-нативного разбора MiMo
+            # (moderate.py), а не из по-кадрового OCR: там нет дрейфа между
+            # кадрами, который проверяет _is_stable_overlay, проверять нечего.
+            if is_video and not fr.get("mimo_verified") and not _is_stable_overlay(idx, frames):
                 continue
             overlay = fr["ocr_text"].strip()
             break
