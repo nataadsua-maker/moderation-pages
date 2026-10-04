@@ -83,15 +83,47 @@ _GIBBERISH_RE = re.compile(
 #
 # Смысловая часть кликбейта (панические формулировки про симптомы/диагнозы) сюда
 # НЕ входит — это решает уже существующая смысловая проверка, не список фраз.
-# `,?\s*` в конце — запятая сразу после фразы («oh my gosh, did you know») это
-# часть самого крючка, а не следующего предложения; без этого после вырезания
-# оставался висячий шов «voice. , did you know» (нашла живьём 30.09.2026).
-_CLICKBAIT_RE = re.compile(
-    r"\b(?:i really wish we'?d known sooner|oh my (?:god|gosh|goodness|lord)|honestly,? i'?m shocked"
-    r"|you(?:'ll)? (?:won'?t|never) believe"
-    r"|okay,? i (?:just )?(?:found out|realized|discovered))\b,?\s*",
-    re.IGNORECASE,
-)
+# 04.10.2026 (решение Nataliia): раньше фраза вырезалась одна, и оставался мусор —
+# висящий знак («oh my gosh! cheap flights» → «! cheap flights») и обрывок
+# предложения («you won't believe these prices» → «these prices»). Теперь у
+# каждого крючка своя замена: междометия и законченные фразы вырезаем вместе со
+# знаками за ними, а там, где за крючком идёт продолжение мысли, ставим
+# нейтральную информационную подводку (see / learn / take a look at — тот же ряд,
+# что разрешён для кнопки; кликовых Click/Tap/Apply здесь быть не может).
+# Если после замены от предложения осталось меньше 2 слов — убираем предложение
+# целиком. Гладкую переформулировку сверху даёт ИИ-проверка (headline_rewrite в
+# llm_checks.py), эта чистка — гарантированный запасной вариант.
+# Добавлены «i wish we'd known sooner» без «really» и «i was shocked» (нашла
+# Nataliia 04.10.2026). Тогда же Nataliia решила заменять и «people never believe
+# me», и «dreaded paying», хотя выше они были исключены. Рассказ от первого лица
+# не ломаем: вырезаем только вступление «people never believe me when i tell
+# them», то, что человек рассказывает дальше, остаётся («… there's a whole house»
+# → «there's a whole house»). «dreaded paying» → «paying»: эмоция уходит, факт
+# (за что платят) остаётся.
+_HOOK_TAIL = r"[\s,!?.]*"
+_CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
+    # Междометия — просто вырезать вместе с запятой/восклицанием после.
+    (re.compile(r"\boh my (?:god|gosh|goodness|lord)\b" + _HOOK_TAIL, re.I), ""),
+    # Сожаление — законченная фраза, хвоста нет.
+    (re.compile(r"\bi (?:really )?wish (?:we|i)'?d known (?:about (?:this|it) |this |it )?sooner\b" + _HOOK_TAIL, re.I), ""),
+    # Шок с продолжением «by/at …» → «take a look at …».
+    (re.compile(r"\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked (?:by|at)\s+", re.I), "take a look at "),
+    # Шок без продолжения (или с «that …») — вырезать, мысль после «that» остаётся.
+    (re.compile(r"\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked\b(?:\s+that\b)?" + _HOOK_TAIL, re.I), ""),
+    # «you won't believe …» → «see …».
+    (re.compile(r"\byou(?:'ll)? (?:won'?t|never) believe\s+(?!me\b)(?=[a-z0-9$])", re.I), "see "),
+    (re.compile(r"\byou(?:'ll)? (?:won'?t|never) believe(?: me)?\b" + _HOOK_TAIL, re.I), ""),
+    # «people never believe me when i tell them (that) …» → то, что дальше.
+    (re.compile(r"\b(?:people|nobody|no one) (?:never |don'?t |doesn'?t )?believes? me\s+when i tell (?:them|people|anyone)(?: that)?\s+", re.I), ""),
+    (re.compile(r"\b(?:people|nobody|no one) (?:never |don'?t |doesn'?t )?believes? me\b" + _HOOK_TAIL, re.I), ""),
+    # «we dreaded paying for repairs» → «paying for repairs».
+    (re.compile(r"\b(?:(?:i|we|you|they)(?: all)?(?: always| used to)? )?dread(?:ed)? paying\b", re.I), "paying"),
+    # «okay, i just found out that …» → мысль после «that» без подводки;
+    # «… about / что угодно ещё» → «learn …».
+    (re.compile(r"\bokay,? i (?:just )?(?:found out|realized|discovered) that\s+", re.I), ""),
+    (re.compile(r"\bokay,? i (?:just )?(?:found out|realized|discovered)\s+(?=[a-z0-9$])", re.I), "learn "),
+    (re.compile(r"\bokay,? i (?:just )?(?:found out|realized|discovered)\b" + _HOOK_TAIL, re.I), ""),
+]
 
 # Короткие бессмысленные токены между точками (партнёрка: «.lg lg.» — «Stray
 # Tracking Tokens: non-advertised backend keywords»). Ловим ТОЛЬКО сегменты, где
@@ -144,9 +176,34 @@ def strip_gibberish(s: str) -> str:
     return _tidy_seams(s)
 
 
+def _strip_clickbait_sentence(sent: str) -> str:
+    """Один кусок между . ! ? — применяем правила; если крючок был, а от
+    предложения осталось меньше 2 слов, кусок выбрасываем целиком."""
+    out = sent
+    for rx, repl in _CLICKBAIT_RULES:
+        out = rx.sub(repl, out)
+    if out == sent:
+        return sent
+    out = re.sub(r"^[\s,]+|[\s,]+$", "", out)
+    out = re.sub(r"\s{2,}", " ", out)
+    if len(re.findall(r"[a-z0-9$%']+", out, re.I)) < 2:
+        return ""
+    return (" " if sent[:1].isspace() else "") + out
+
+
 def strip_clickbait(s: str) -> str:
-    s = _CLICKBAIT_RE.sub("", s)
-    return _tidy_seams(s)
+    # Режем по концам предложений, знаки сохраняем отдельными элементами.
+    pieces = re.split(r"([.!?]+)", s)
+    kept: list[str] = []
+    for i in range(0, len(pieces), 2):
+        sent = pieces[i]
+        punct = pieces[i + 1] if i + 1 < len(pieces) else ""
+        cleaned = _strip_clickbait_sentence(sent)
+        if cleaned.strip():
+            kept.append(cleaned + punct)
+        elif not sent.strip() and punct and kept:
+            kept.append(punct)  # пустой кусок без крючка («..») — шов, подчистит _tidy_seams
+    return _tidy_seams("".join(kept))
 
 
 def _lines(s: str) -> list[str]:
@@ -246,3 +303,31 @@ def build_clean_headline(sub: dict, videos: list[dict]) -> str:
     s = strip_stray_tokens(s)
     s = strip_gibberish(s)
     return _tidy_seams(s)
+
+
+# Подводки, которые ИИ-версия может добавить сверх исходной строки (те же, что
+# ставит механическая чистка выше). Любое другое новое слово = ИИ что-то
+# придумал, такой вариант не берём.
+_REWRITE_ALLOWED_NEW = {"see", "learn", "take", "a", "look", "at", "about", "the", "this"}
+
+
+def _words(s: str) -> list[str]:
+    return re.findall(r"[a-z0-9$%']+", (s or "").lower())
+
+
+def accept_rewrite(clean: str, rewrite) -> str:
+    """Предохранитель для headline_rewrite от ИИ-проверки (llm_checks.py).
+    Решение Nataliia 04.10.2026: берём гладкую версию ИИ, только если она не
+    добавила своих слов (кроме подводок see/learn/take a look at), не потеряла
+    больше 40% текста и в ней не осталось крючков. Иначе — механическая чистка."""
+    if not clean or not isinstance(rewrite, str) or not rewrite.strip():
+        return clean
+    r = _tidy_seams(clean_syntax(strip_emoji(rewrite.lower())))
+    if strip_clickbait(r) != r:
+        return clean
+    src, new = _words(clean), _words(r)
+    if set(new) - set(src) - _REWRITE_ALLOWED_NEW:
+        return clean
+    if len(new) < 0.6 * len(src) or len(new) > len(src) + 5:
+        return clean
+    return r

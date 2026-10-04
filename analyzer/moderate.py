@@ -213,6 +213,8 @@ def run_archive_copy(sub: dict, lander: dict) -> None:
     notify = os.environ.get("SILENT", "").lower() not in ("1", "true", "yes")
     # media_analysis шлём тот же, что и пришёл: у копии он унаследован от исходной
     # заявки, и пустой список его бы затёр.
+    # Гладкая версия от ИИ-проверки — только если прошла предохранитель (headline.accept_rewrite).
+    assembled_headline = headline_mod.accept_rewrite(assembled_headline, l2.get("headline_rewrite"))
     api_client.post_verdict(sub["id"], v, page_url, media, notify=notify, headline=assembled_headline)
     print(f"  done (notify={notify})")
 
@@ -398,6 +400,8 @@ def run(submission_id: str) -> None:
         worker_url = os.environ["WORKER_URL"]
         page_url = f"{worker_url}/sub/{sub['id']}"
         notify = os.environ.get("SILENT", "").lower() not in ("1", "true", "yes")
+        # Гладкая версия от ИИ-проверки — только если прошла предохранитель (headline.accept_rewrite).
+        assembled_headline = headline_mod.accept_rewrite(assembled_headline, l2.get("headline_rewrite"))
         api_client.post_verdict(sub["id"], v, page_url, media_analysis, notify=notify, headline=assembled_headline)
         print(f"  done (notify={notify})")
 
