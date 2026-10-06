@@ -1,0 +1,80 @@
+name: airfind-media
+
+# Разбор видео-креатива для вкладки «🔎 Airfind» сервиса модерации: озвучка +
+# текст плашек, без модерации и вердикта (analyzer/airfind_media.py).
+
+on:
+  repository_dispatch:
+    types: [airfind_media]
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: analyzer/requirements.txt
+
+      - name: Install ffmpeg
+        timeout-minutes: 6
+        run: |
+          # apt тут больше не жилец: зеркало azure.archive.ubuntu.com отдаёт пакеты
+          # по 3-4 минуты и валит шаг (19.08.2026 — 23 прогона из 58, плюс два подряд
+          # на перезапусках уже с ретраями). Ставим статическую сборку с GitHub
+          # (ffmpeg + ffprobe одним архивом, качается секунды), apt оставлен запасным.
+          set -e
+          URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+          if curl -fsSL --retry 3 --retry-delay 5 --max-time 180 -o /tmp/ffmpeg.tar.xz "$URL"; then
+            mkdir -p /tmp/ffmpeg
+            tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg --strip-components=1
+            sudo install -m 755 /tmp/ffmpeg/bin/ffmpeg /tmp/ffmpeg/bin/ffprobe /usr/local/bin/
+          else
+            echo "static build unavailable, fallback to apt"
+            export DEBIAN_FRONTEND=noninteractive
+            timeout 240 sudo -E apt-get -o Acquire::Retries=3 update
+            timeout 240 sudo -E apt-get -o Acquire::Retries=3 install -y ffmpeg
+          fi
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - name: Install Python deps
+        timeout-minutes: 5
+        run: pip install -r analyzer/requirements.txt
+
+      - name: Analyze creative
+        timeout-minutes: 10
+        env:
+          JOB_ID: ${{ github.event.client_payload.job_id }}
+          ASSET_KEY: ${{ github.event.client_payload.key }}
+          WORKER_URL: ${{ vars.WORKER_URL }}
+          VERDICT_SHARED_SECRET: ${{ secrets.VERDICT_SHARED_SECRET }}
+          NIM_API_KEY: ${{ secrets.NIM_API_KEY }}
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_S3_ENDPOINT: ${{ vars.R2_S3_ENDPOINT }}
+          R2_BUCKET: moderation-videos
+        run: python -u analyzer/airfind_media.py --job-id "$JOB_ID" --key "$ASSET_KEY"
+
+      - name: Report failure to Worker
+        if: failure()
+        env:
+          WORKER_URL: ${{ vars.WORKER_URL }}
+          VERDICT_SHARED_SECRET: ${{ secrets.VERDICT_SHARED_SECRET }}
+          JOB_ID: ${{ github.event.client_payload.job_id }}
+        run: |
+          curl -sS -X POST "${WORKER_URL}/api/internal/airfind-media" \
+            -H "Authorization: Bearer ${VERDICT_SHARED_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"job_id\": \"${JOB_ID}\", \"ok\": false, \"error\": \"разбор упал, см. GitHub Actions\"}" || true
