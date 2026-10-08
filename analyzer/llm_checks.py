@@ -4,6 +4,7 @@ import json
 
 from nim import text_check
 import gemini
+import mimo_video
 
 import text_policy
 
@@ -255,7 +256,14 @@ def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: li
         # Печатаем причину: без неё отказ модели виден только как «нужна ручная
         # проверка» на карточке, и поломка стека молча живёт неделями (10-19.08).
         print(f"  layer 2 LLM call failed: {e}")
-        # Запасной путь — Gemini, как у кадров (08.10.2026: NIM 429 на наплыве).
+        # Запасные пути (08.10.2026: NIM 429 на наплыве): сначала MiMo (решение
+        # Nataliia), если и она не ответила — Gemini, как у кадров.
+        try:
+            r = mimo_video.text_json(system, user)
+            print("  layer 2: NIM отказал, проверку сделала MiMo")
+            return r
+        except Exception as me:
+            print(f"  layer 2 MiMo fallback failed: {me}")
         if gemini.available():
             try:
                 r = gemini.text_json(system, user)

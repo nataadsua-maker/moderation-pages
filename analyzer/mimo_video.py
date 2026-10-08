@@ -31,6 +31,7 @@ import os
 from pathlib import Path
 
 import requests
+import time
 
 PROMPT = """Analyze this video ad creative frame by frame. List EVERY piece of text that
 appears as an ON-SCREEN OVERLAY/CAPTION added by the advertiser (subtitles, banners, callouts,
@@ -143,3 +144,38 @@ def detect_overlays(video_path: Path) -> list[dict] | None:
     except Exception as e:
         print(f"  MiMo: исключение ({type(e).__name__}: {e}), фолбэк на по-кадровый OCR")
         return None
+
+
+def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000) -> dict:
+    """Текстовая проверка через MiMo — запасной путь проверки соответствия ленду,
+    когда NIM отказал (решение Nataliia 08.10.2026: MiMo вместо/до Gemini).
+    OpenAI-совместимый API, строгий JSON через response_format. Нет ключа или
+    ошибка — исключение, вызывающий идёт к следующему запасному."""
+    key = os.environ.get("MIMO_API_KEY")
+    if not key:
+        raise RuntimeError("MiMo: нет MIMO_API_KEY")
+    payload = {
+        "model": os.environ.get("MIMO_TEXT_MODEL", MODEL),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_payload},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+    }
+    last = None
+    for attempt in range(3):
+        r = requests.post("https://api.xiaomimimo.com/v1/chat/completions",
+                          headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                          json=payload, timeout=120)
+        if r.status_code == 200:
+            content = r.json()["choices"][0]["message"]["content"].strip()
+            if content.startswith("```"):
+                content = content.strip("`").split("\n", 1)[1].rsplit("```", 1)[0]
+            return json.loads(content)
+        last = RuntimeError(f"MiMo {r.status_code}: {r.text[:200]}")
+        if r.status_code not in (429, 500, 502, 503, 504):
+            break
+        time.sleep(5 * (attempt + 1))
+    raise last
