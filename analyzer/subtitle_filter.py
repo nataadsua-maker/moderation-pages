@@ -38,8 +38,44 @@ def _is_substring_match(needle_tokens: list[str], haystack_tokens: list[str]) ->
     return False
 
 
+# Японский/китайский/корейский: слов через пробел нет, а _normalize выше
+# выкидывает всё, кроме латиницы — такой текст превращался в пустоту и никогда
+# не считался субтитром. Обрывок вшитого субтитра («キッチンは毎») уезжал в
+# headline как плашка (REQ-260929-036, нашла Nataliia 08.10.2026). Для них
+# сравниваем по символам (запас на ошибки распознавания вроде «での» вместо «で その»).
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]")
+
+
+def _chars(s: str) -> str:
+    return re.sub(r"[\W_]+", "", s or "").lower()
+
+
+def _is_cjk_subtitle(ocr_text: str, transcript_full: str) -> bool:
+    """Ищем в озвучке кусок примерно той же длины, где совпадает ≥75% символов
+    текста на кадре (по порядку). Окно, а не вся озвучка: иначе короткий текст
+    «совпал» бы с разбросанными по всей озвучке символами."""
+    from difflib import SequenceMatcher
+    a, b = _chars(ocr_text), _chars(transcript_full)
+    # 1-2 иероглифа («応急», «ン性») — осколок пословных субтитров, плашкой не бывает.
+    if len(a) < 3:
+        return True
+    if not b:
+        return False
+    w = len(a) + 3
+    best = 0
+    for start in range(0, max(1, len(b) - len(a) + 1)):
+        win = b[start:start + w]
+        matched = sum(blk.size for blk in SequenceMatcher(None, a, win, autojunk=False).get_matching_blocks())
+        best = max(best, matched)
+        if best == len(a):
+            break
+    return best / len(a) >= 0.75
+
+
 def is_subtitle(ocr_text: str, transcript_full: str) -> bool:
     """Returns True if ocr_text duplicates the spoken track (i.e. burned-in subtitle)."""
+    if _CJK_RE.search(ocr_text or ""):
+        return _is_cjk_subtitle(ocr_text, transcript_full)
     ocr_tokens = _normalize(ocr_text)
     trans_tokens = _normalize(transcript_full)
     if len(ocr_tokens) < 2:
