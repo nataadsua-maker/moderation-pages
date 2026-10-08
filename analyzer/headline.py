@@ -46,9 +46,15 @@ _EMOJI_RE = re.compile(
 )
 
 
+# Декоративные символы — тот же набор, что в worker/src/headline_clean.ts (08.10.2026).
+_DECOR_RE = re.compile(r"[«»‹›<>*\\|~^_=•●▪►▶◆◇■□★☆\u2190-\u21FF\u2500-\u25FF]")
+
+
 def strip_emoji(s: str) -> str:
-    """Как stripEmoji() в clickflare.ts: вырезать эмодзи, схлопнуть лишние пробелы."""
-    return re.sub(r"[ \t]{2,}", " ", _EMOJI_RE.sub("", s or "")).strip()
+    """Как stripEmoji() в clickflare.ts: вырезать эмодзи и декоративные символы,
+    схлопнуть лишние пробелы."""
+    s = _DECOR_RE.sub(" ", _EMOJI_RE.sub("", s or ""))
+    return re.sub(r"[ \t]{2,}", " ", s).strip()
 
 
 # Мусорные вставки, которые модель иногда «дочитывает» на пустом кадре или которые
