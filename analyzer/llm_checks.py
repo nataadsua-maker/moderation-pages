@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from nim import text_check
+import gemini
 
 import text_policy
 
@@ -247,12 +248,21 @@ def check(submission: dict, lander: dict, videos: list[dict], numeric_claims: li
     }
     if assembled_headline:
         payload["assembled_headline"] = assembled_headline
+    system, user = _system_prompt(platform), json.dumps(payload, ensure_ascii=False)
     try:
-        return text_check(_system_prompt(platform), json.dumps(payload, ensure_ascii=False))
+        return text_check(system, user)
     except Exception as e:
         # Печатаем причину: без неё отказ модели виден только как «нужна ручная
         # проверка» на карточке, и поломка стека молча живёт неделями (10-19.08).
         print(f"  layer 2 LLM call failed: {e}")
+        # Запасной путь — Gemini, как у кадров (08.10.2026: NIM 429 на наплыве).
+        if gemini.available():
+            try:
+                r = gemini.text_json(system, user)
+                print("  layer 2: NIM отказал, проверку сделал Gemini")
+                return r
+            except Exception as ge:
+                print(f"  layer 2 Gemini fallback failed: {ge}")
         # FAIL-CLOSED: a crashed LLM call must NOT silently approve. The Ad-to-Page /
         # identity / promises / numbers checks are top priority — if we couldn't run
         # them, force the submission to a human instead of letting it pass.

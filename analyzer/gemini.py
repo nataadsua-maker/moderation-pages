@@ -112,6 +112,14 @@ def describe_frame(frame_path: Path, question: str) -> str:
     raise last if last else RuntimeError("Gemini failed")
 
 
+def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000) -> dict:
+    """Запасной текстовый вызов со строгим JSON — для проверки соответствия ленду
+    (llm_checks.check), когда NIM отказал: 08.10.2026 вечерний наплыв заявок дал
+    NIM 429 пять раз подряд, и три заявки ушли на ручную проверку. Тот же принцип,
+    что у кадров: платим только за поломку."""
+    return _generate_json(system_prompt, user_payload, max_tokens)
+
+
 def classify_frame(system_prompt: str, description: str) -> dict:
     """Запасной шаг полиси, когда текстовая модель NIM отказала.
 
@@ -120,13 +128,17 @@ def classify_frame(system_prompt: str, description: str) -> dict:
     (responseMimeType), в отличие от vision-модели NIM — ради которой разбор
     кадра и пришлось разбивать на два шага.
     """
+    return _generate_json(system_prompt, description, 1000)
+
+
+def _generate_json(system_prompt: str, user_text: str, max_tokens: int) -> dict:
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
-        "contents": [{"role": "user", "parts": [{"text": description}]}],
+        "contents": [{"role": "user", "parts": [{"text": user_text}]}],
         "generationConfig": {
             "temperature": 0.1,
             "responseMimeType": "application/json",
-            "maxOutputTokens": 1000,
+            "maxOutputTokens": max_tokens,
         },
     }
     url = f"{API_BASE}/{MODEL}:generateContent?key={os.environ['GEMINI_API_KEY']}"
