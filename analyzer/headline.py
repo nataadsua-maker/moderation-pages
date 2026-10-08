@@ -142,6 +142,16 @@ _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bwait (?:till|until|'til) you see(?: (?:it|this))?\b" + _HOOK_TAIL, re.I), ""),
     (re.compile(r",?\s*(?:and |but )?(?:honestly,? )?i had no idea\b(?:\s+that\b)?" + _HOOK_TAIL, re.I), " "),
     (re.compile(r"\b(?:go )?look (?:this|it) up (?:for )?yourself\b" + _HOOK_TAIL, re.I), ""),
+    # «click here / tap here / tap below / tap to / search here» — в ролике на NB/SN
+    # разрешены, но в headline для трекера заменяем на разрешённое (решение Nataliia
+    # 08.10.2026). «tap here to see …» → «see …»; в конце предложения → «learn more»;
+    # в середине — вырезаем. Держать в паре с HOOKS в headline_clean.ts.
+    (re.compile(r"\b(?:click|tap) (?:here|below|the button below|the link below)\s+to\s+(?=[a-z])", re.I), ""),
+    (re.compile(r"\btap to\s+(?=[a-z])", re.I), ""),
+    (re.compile(r"\b(?:just )?(?:click|tap) (?:here|below) and\s+", re.I), ""),
+    (re.compile(r"\b(?:click|tap) (?:here|below) for\s+(?=[a-z])", re.I), "see "),
+    (re.compile(r"\b(?:click|tap|search) (?:here|below)\b(?=\s*(?:[.!?]|$))", re.I), "learn more"),
+    (re.compile(r"\b(?:click|tap|search) (?:here|below)\b,?\s*", re.I), ""),
 ]
 
 # Короткие бессмысленные токены между точками (партнёрка: «.lg lg.» — «Stray

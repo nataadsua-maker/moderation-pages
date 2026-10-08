@@ -188,10 +188,13 @@ def _system_prompt(platform: str | None) -> str:
     """Полиси зависит от сорса залива: на Newsbreak CTA «click/tap/search here»
     разрешён внутри ролика (правило Nataliia, 24.08.2026). В полях объявления
     он запрещён на любом сорсе, поэтому исключение проговорено адресно."""
-    if text_policy.norm_platform(platform) != "nb":
+    # 08.10.2026: SmartNews — то же исключение, что Newsbreak (решение Nataliia).
+    src = text_policy.norm_platform(platform)
+    if src not in ("nb", "sn"):
         return SYSTEM_PROMPT
-    exception = """=== SOURCE-SPECIFIC EXCEPTION (traffic source: Newsbreak) ===
-This submission runs on Newsbreak. For THIS source only:
+    name = "Newsbreak" if src == "nb" else "SmartNews"
+    exception = f"""=== SOURCE-SPECIFIC EXCEPTION (traffic source: {name}) ===
+This submission runs on {name}. For THIS source only:
 - The phrases "click here", "tap here", "tap below", "tap to ...", "search here" are ALLOWED
   when they appear INSIDE THE VIDEO — in the voiceover (`where` = "... озвучка") or in an
   on-screen плашка/caption (`where` = "... плашка"). Do NOT report them as a violation there,

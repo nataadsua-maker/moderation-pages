@@ -57,13 +57,15 @@ FALLBACK_STOP_WORD_RULES = [
      "hint": "Shop/Buy Now — запрещённый CTA"},
     {"id": "get_yours", "pattern": r"\bget yours\b", "section": "2.4", "severity": "error",
      "hint": "Get Yours — запрещённый CTA"},
+    # 08.10.2026: то же исключение и для SmartNews (решение Nataliia: «у сн и нб одинаково»).
+    # В headline для трекера такие фразы заменяются на разрешённые (headline.py).
     # Правило Nataliia (24.08.2026): на Newsbreak такой CTA пропускаем ВНУТРИ
     # ролика (озвучка, плашки на кадрах). В Adtitle и Description он остаётся
     # нарушением, как и на остальных сорсах. Button CTA сканируется как поле
     # объявления (не in_media), так что в кнопке этот запрет в силе на всех сорсах.
     {"id": "click_tap_search_here", "pattern": r"\b(click here|tap (here|below|to)|search here)\b",
      "section": "2.3, 2.4", "severity": "error", "hint": "Click/Tap/Search Here — запрещённый CTA",
-     "media_exempt_sources": ["nb"]},
+     "media_exempt_sources": ["nb", "sn"]},
     {"id": "dollar_amount", "pattern": r"\$\d|\d+\s*(dollars|usd|/mo|per month|/yr)",
      "section": "2.3", "severity": "warn",
      "hint": "цифра/сумма — проверим что дословно есть на ленде"},
@@ -108,7 +110,9 @@ def norm_platform(p: str | None) -> str:
     # полиси у него общая с fb.
     if p == "fb2":
         return "fb"
-    return p if p in ("nb", "fb", "tt", "other") else "other"
+    # sn/tb/ob — свои коды (до 08.10.2026 схлопывались в other, и исключение
+    # для SmartNews было не на что повесить).
+    return p if p in ("nb", "sn", "fb", "tt", "tb", "ob", "other") else "other"
 
 
 STOP_WORD_RULES = _rules_from_worker() or FALLBACK_STOP_WORD_RULES
