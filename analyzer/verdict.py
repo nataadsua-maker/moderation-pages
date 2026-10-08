@@ -15,7 +15,7 @@ TIER3 = 3
 
 
 def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: list[dict],
-             numeric_hits: list[dict] | None = None) -> dict:
+             numeric_hits: list[dict] | None = None, carried: list[dict] | None = None) -> dict:
     """Returns:
     {
       "overall": "approve" | "reject",
@@ -133,6 +133,13 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
                     "category": "critical_18plus" if is_18plus else "standard",
                     "tier": TIER3,
                 })
+
+    # Копия с тем же крео (moderate.run_copy): визуальные находки по кадрам
+    # заново не ищем — берём из исходной заявки как есть.
+    for cv in carried or []:
+        violations.append(cv)
+        if cv.get("category") == "critical_18plus":
+            critical_18plus = True
 
     # Order by priority tier (Tier 1 first) so the report and the buyer message surface the
     # important violations before minor ones. Stable sort keeps within-tier order.

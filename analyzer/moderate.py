@@ -219,6 +219,102 @@ def run_archive_copy(sub: dict, lander: dict) -> None:
     print(f"  done (notify={notify})")
 
 
+def layer1_scan(sub: dict, videos: list[dict]) -> list[dict]:
+    """Layer 1 — стоп-слова по текстам крео. Общий для обычного прогона и копии."""
+    l1: list[dict] = []
+    src = text_policy.norm_platform(sub.get("platform"))
+    l1 += text_policy.scan_text(sub["adtitle"], "Adtitle")
+    l1 += text_policy.scan_text(sub["description"], "Description")
+    l1 += text_policy.scan_text(sub["button_cta"], "Button CTA")
+    # Lander is NOT scanned for stop-words — partner (System1/ADS) owns lander compliance.
+    # We only fetch the lander to feed it as context to Layer 2 LLM for Ad-to-Page Match.
+    for v_idx, v in enumerate(videos):
+        label = "Картинка" if v.get("kind") == "image" else "Видео"
+        # in_media=True: тексты из самого ролика. Часть правил на отдельных
+        # сорсах здесь не действует (на nb пропускаем Click/Tap/Search Here),
+        # тогда как в Adtitle/Description выше они в силе на всех сорсах.
+        for seg in v["transcript"]["segments"]:
+            where = f"{label} {v_idx+1}, {_fmt_ts(seg['start'])} озвучка"
+            l1 += text_policy.scan_text(seg["text"], where, platform=src, in_media=True)
+        for fr in v["frames_analysis"]:
+            if fr["ocr_text"] and not fr.get("is_subtitle"):
+                suffix = "плашка" if v.get("kind") != "image" else "текст"
+                where = f"{label} {v_idx+1}" + (f", {fr['ts']} {suffix}" if v.get("kind") != "image" else f", {suffix}")
+                l1 += text_policy.scan_text(fr["ocr_text"], where, platform=src, in_media=True)
+    return l1
+
+
+def _same_violation(a: dict, b: dict) -> bool:
+    return (a.get("where") or "") == (b.get("where") or "") and (a.get("quote") or "").strip().lower() == (b.get("quote") or "").strip().lower() \
+        and (a.get("policy_section") or "") == (b.get("policy_section") or "")
+
+
+def _media_for_copy(sub: dict, src_sub: dict) -> list[dict]:
+    """Разбор исходной заявки, но с ключами файлов копии (по отпечаткам, иначе по порядку)."""
+    media = [dict(m) for m in (src_sub.get("media_analysis") or [])]
+    keys = sub.get("video_keys") or []
+    sh, ch = src_sub.get("media_hashes") or [], sub.get("media_hashes") or []
+    if sh and ch and len(sh) == len(media):
+        by_hash = {h: m for h, m in zip(sh, media)}
+        ordered = [by_hash.get(h) for h in ch]
+        if all(ordered):
+            media = [dict(m) for m in ordered]
+    for i, m in enumerate(media):
+        if i < len(keys):
+            m["key"] = keys[i]
+    return media
+
+
+def run_copy(sub: dict, lander: dict, src_sub: dict) -> None:
+    """Копия с тем же крео (решение Nataliia 08.10.2026). Видео не скачиваем и не
+    разбираем: озвучка, плашки и находки по кадрам — из исходной заявки. Заново:
+    стоп-слова (сорс мог поменяться — на NB/SN другие правила для ролика), ленд,
+    цифры, язык, склейка headline."""
+    src_id = src_sub["id"]
+    print(f"[2/4] Копия {src_id}: берём разбор крео оттуда")
+    media = _media_for_copy(sub, src_sub)
+    videos = videos_from_media_analysis(media)
+    subtitle_filter.annotate_frames(videos)
+    assembled_headline = headline_mod.build_clean_headline(sub, videos)
+
+    print("[3/4] Стоп-слова, соответствие ленду, цифры")
+    l1 = layer1_scan(sub, videos)
+    numeric_sources = numeric_sources_of(sub, videos)
+    numeric_claims: list[str] = []
+    for _, txt in numeric_sources:
+        numeric_claims += text_policy.extract_money_claims(txt)
+    src = text_policy.norm_platform(sub.get("platform"))
+    l2 = layer2_check(sub, lander, videos, numeric_claims, src, assembled_headline)
+    numeric_hits: list[dict] = []
+    if lander.get("ok") and len(lander.get("text", "") or "") >= 200:
+        numeric_hits = text_policy.check_numeric_claims(numeric_sources, lander.get("text", ""))
+
+    # Находки по кадрам (визуал, 18+) — из исходной. Если исходную одобрили
+    # (модератор снял находки или их не было) — не переносим.
+    src_ok = src_sub.get("status") in ("approved", "appeal_approved")
+    carried = [] if src_ok else [
+        {**cv, "carried": True, "seen_in": src_id}
+        for cv in ((src_sub.get("verdict") or {}).get("violations") or [])
+        if "кадр" in (cv.get("where") or "")
+    ]
+    v = verdict_mod.assemble(sub, l1, l2, videos, numeric_hits=numeric_hits, carried=carried)
+    # Пометка для карточки: это нарушение было и в исходной заявке.
+    prev = (src_sub.get("verdict") or {}).get("violations") or []
+    for x in v["violations"]:
+        if not x.get("seen_in") and any(_same_violation(x, p) for p in prev):
+            x["seen_in"] = src_id
+    v.setdefault("stats", {})["copy_of"] = src_id
+    print(f"  overall={v['overall']} violations={len(v['violations'])} (из исходной: {sum(1 for x in v['violations'] if x.get('seen_in'))})")
+
+    print("[4/4] POST verdict to Worker")
+    assembled_headline = headline_mod.accept_rewrite(assembled_headline, l2.get("headline_rewrite"))
+    worker_url = os.environ["WORKER_URL"]
+    page_url = f"{worker_url}/sub/{sub['id']}"
+    notify = os.environ.get("SILENT", "").lower() not in ("1", "true", "yes")
+    api_client.post_verdict(sub["id"], v, page_url, media, notify=notify, headline=assembled_headline)
+    print(f"  done (notify={notify})")
+
+
 def run(submission_id: str) -> None:
     print(f"[1/9] Fetching submission {submission_id}")
     sub = api_client.fetch_submission(submission_id)
@@ -233,6 +329,18 @@ def run(submission_id: str) -> None:
     if not sub.get("video_keys"):
         run_archive_copy(sub, lander)
         return
+
+    # Копия своей же заявки с тем же крео (воркер, copy_detect.ts): видео заново
+    # не разбираем, берём разбор исходной. Нет разбора у исходной — обычный прогон.
+    if sub.get("copy_of") and (sub.get("copy_diff") or {}).get("videos") == "same":
+        try:
+            src_sub = api_client.fetch_submission(sub["copy_of"])
+        except Exception as e:
+            print(f"  copy source fetch failed, full run: {e}")
+            src_sub = None
+        if src_sub and src_sub.get("media_analysis"):
+            run_copy(sub, lander, src_sub)
+            return
 
     print(f"[3-4/9] Processing {len(sub['video_keys'])} assets")
     IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -321,26 +429,8 @@ def run(submission_id: str) -> None:
         assembled_headline = headline_mod.build_clean_headline(sub, videos)
 
         print("[5/9] Layer 1 regex scan (creative only — lander is partner's responsibility)")
-        l1: list[dict] = []
         src = text_policy.norm_platform(sub.get("platform"))
-        l1 += text_policy.scan_text(sub["adtitle"], "Adtitle")
-        l1 += text_policy.scan_text(sub["description"], "Description")
-        l1 += text_policy.scan_text(sub["button_cta"], "Button CTA")
-        # Lander is NOT scanned for stop-words — partner (System1/ADS) owns lander compliance.
-        # We only fetch the lander to feed it as context to Layer 2 LLM for Ad-to-Page Match.
-        for v_idx, v in enumerate(videos):
-            label = "Картинка" if v.get("kind") == "image" else "Видео"
-            # in_media=True: тексты из самого ролика. Часть правил на отдельных
-            # сорсах здесь не действует (на nb пропускаем Click/Tap/Search Here),
-            # тогда как в Adtitle/Description выше они в силе на всех сорсах.
-            for seg in v["transcript"]["segments"]:
-                where = f"{label} {v_idx+1}, {_fmt_ts(seg['start'])} озвучка"
-                l1 += text_policy.scan_text(seg["text"], where, platform=src, in_media=True)
-            for fr in v["frames_analysis"]:
-                if fr["ocr_text"] and not fr.get("is_subtitle"):
-                    suffix = "плашка" if v.get("kind") != "image" else "текст"
-                    where = f"{label} {v_idx+1}" + (f", {fr['ts']} {suffix}" if v.get("kind") != "image" else f", {suffix}")
-                    l1 += text_policy.scan_text(fr["ocr_text"], where, platform=src, in_media=True)
+        l1 = layer1_scan(sub, videos)
         print(f"  layer 1 hits: {len(l1)}")
 
         # Collect creative + media text for the numeric Ad-to-Page checks (Tier 1).
