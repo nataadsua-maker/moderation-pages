@@ -101,11 +101,14 @@ _GIBBERISH_RE = re.compile(
 # → «there's a whole house»). «dreaded paying» → «paying»: эмоция уходит, факт
 # (за что платят) остаётся.
 _HOOK_TAIL = r"[\s,!?.]*"
+_FOUND = r"\b(?:okay[,.]?\s*(?:so,?\s*|listen,?\s*)?i (?:just )?|i just )(?:found out|realized|discovered)"
 _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     # Междометия — просто вырезать вместе с запятой/восклицанием после.
     (re.compile(r"\boh my (?:god|gosh|goodness|lord)\b" + _HOOK_TAIL, re.I), ""),
     # Сожаление — законченная фраза, хвоста нет.
-    (re.compile(r"\bi (?:really )?wish (?:we|i)'?d known (?:about (?:this|it) |this |it )?sooner\b" + _HOOK_TAIL, re.I), ""),
+    # «i wish i'd known this before using …» → «what to know before using …» (аудит 08.10.2026).
+    (re.compile(r"\bi (?:really )?wish (?:we|i)'?d known (?:about )?(?:this |it )?before\s+(?=[a-z])", re.I), "what to know before "),
+    (re.compile(r"\bi (?:really )?wish (?:we|i)'?d known (?:about (?:this|it) |this |it )?(?:sooner|before)\b" + _HOOK_TAIL, re.I), ""),
     # Шок с продолжением «by/at …» → «take a look at …».
     (re.compile(r"\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked (?:by|at)\s+", re.I), "take a look at "),
     # Шок без продолжения (или с «that …») — вырезать, мысль после «that» остаётся.
@@ -118,11 +121,21 @@ _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:people|nobody|no one) (?:never |don'?t |doesn'?t )?believes? me\b" + _HOOK_TAIL, re.I), ""),
     # «we dreaded paying for repairs» → «paying for repairs».
     (re.compile(r"\b(?:(?:i|we|you|they)(?: all)?(?: always| used to)? )?dread(?:ed)? paying\b", re.I), "paying"),
-    # «okay, i just found out that …» → мысль после «that» без подводки;
-    # «… about / что угодно ещё» → «learn …».
-    (re.compile(r"\bokay,? i (?:just )?(?:found out|realized|discovered) that\s+", re.I), ""),
-    (re.compile(r"\bokay,? i (?:just )?(?:found out|realized|discovered)\s+(?=[a-z0-9$])", re.I), "learn "),
-    (re.compile(r"\bokay,? i (?:just )?(?:found out|realized|discovered)\b" + _HOOK_TAIL, re.I), ""),
+    # «okay, i just found out» и живые варианты (аудит 08.10.2026: «i just found
+    # out» без okay, «okay, listen, …», «okay, so i need to tell you guys what i
+    # just found out»). Перед what/which/how/about — «learn …», иначе вырезаем.
+    # Держать в паре с HOOKS в worker/src/headline_clean.ts.
+    (re.compile(r"\bokay[,.]?\s*(?:so,?\s*|listen,?\s*)?i need to tell you(?: guys)? what i just found out\b" + _HOOK_TAIL, re.I), ""),
+    (re.compile(_FOUND + r" that\s+", re.I), ""),
+    (re.compile(_FOUND + r"\s+(?=(?:what|which|how|why|where|who|whose|when|about)\b)", re.I), "learn "),
+    (re.compile(_FOUND + r"\s+(?=[a-z0-9$])", re.I), ""),
+    (re.compile(_FOUND + r"\b" + _HOOK_TAIL, re.I), ""),
+    # Решение Nataliia 08.10.2026: «wait till you see», «and i had no idea»,
+    # «go look this up yourself». Держать в паре с HOOKS в headline_clean.ts.
+    (re.compile(r"\bwait (?:till|until|'til) you see\s+(?=[a-z0-9$])", re.I), "see "),
+    (re.compile(r"\bwait (?:till|until|'til) you see(?: (?:it|this))?\b" + _HOOK_TAIL, re.I), ""),
+    (re.compile(r",?\s*(?:and |but )?(?:honestly,? )?i had no idea\b(?:\s+that\b)?" + _HOOK_TAIL, re.I), " "),
+    (re.compile(r"\b(?:go )?look (?:this|it) up (?:for )?yourself\b" + _HOOK_TAIL, re.I), ""),
 ]
 
 # Короткие бессмысленные токены между точками (партнёрка: «.lg lg.» — «Stray
@@ -142,6 +155,10 @@ _SHORT_WORD_WHITELIST = {
 
 def _looks_like_stray_token(segment: str) -> bool:
     words = re.findall(r"[a-zA-Z']+", segment.lower())
+    # Только если в части нет ничего, кроме этих латинских слов: иначе «cic»
+    # внутри японской фразы вырезало всю фразу (аудит 08.10.2026).
+    if not re.fullmatch(r"[a-zA-Z'\s,!?-]*", segment):
+        return False
     if not words or len(words) > 3:
         return False
     return all(len(w) <= 3 and w not in _SHORT_WORD_WHITELIST for w in words)
@@ -168,6 +185,7 @@ def _tidy_seams(s: str) -> str:
     s = re.sub(r"\.{2,}", ".", s)
     s = re.sub(r"\.\s*\.", ".", s)
     s = re.sub(r"\s{2,}", " ", s)
+    s = re.sub(r"([?!])(?=[A-Za-z0-9])", r"\1 ", s)
     return s.strip(" .")
 
 

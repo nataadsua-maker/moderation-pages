@@ -38,6 +38,9 @@ def post_verdict(submission_id: str, verdict: dict, page_url: str, media_analysi
     # строка (заявка без крео/видео) — не шлём поле вовсе, воркер оставит
     # старое поведение (посчитает сам при запуске, как раньше).
     if headline:
-        payload["headline"] = headline
+        # Имя поля — headline_ready, как читает воркер (index.ts /api/verdict).
+        # До 08.10.2026 тут стояло "headline", воркер его не видел, и чистая
+        # строка ни разу не доходила до формы запуска (аудит Nataliia).
+        payload["headline_ready"] = headline
     r = requests.post(url, headers=_headers(), json=payload, timeout=60)
     r.raise_for_status()
