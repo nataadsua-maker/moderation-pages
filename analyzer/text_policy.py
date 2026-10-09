@@ -129,6 +129,8 @@ def scan_text(text: str, where: str, platform: str | None = None,
     for rule in STOP_WORD_RULES:
         if in_media and src in rule.get("media_exempt_sources", []):
             continue
+        if where in rule.get("skip_where", []):
+            continue
         for m in re.finditer(rule["pattern"], text, re.IGNORECASE):
             hits.append({
                 "where": where,

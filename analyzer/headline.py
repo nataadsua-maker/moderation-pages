@@ -116,7 +116,7 @@ _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\bi (?:really )?wish (?:we|i)'?d known (?:about )?(?:this |it )?before\s+(?=[a-z])", re.I), "what to know before "),
     (re.compile(r"\bi (?:really )?wish (?:we|i)'?d known (?:about (?:this|it) |this |it )?(?:sooner|before)\b" + _HOOK_TAIL, re.I), ""),
     # Шок с продолжением «by/at …» → «take a look at …».
-    (re.compile(r"\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked (?:by|at)\s+", re.I), "take a look at "),
+    (re.compile(r"\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked (?:by|at)\s+", re.I), "learn about "),
     # Шок без продолжения (или с «that …») — вырезать, мысль после «that» остаётся.
     (re.compile(r"\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked\b(?:\s+that\b)?" + _HOOK_TAIL, re.I), ""),
     # «you won't believe …» → «see …».
@@ -152,6 +152,15 @@ _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:click|tap) (?:here|below) for\s+(?=[a-z])", re.I), "see "),
     (re.compile(r"\b(?:click|tap|search) (?:here|below)\b(?=\s*(?:[.!?]|$))", re.I), "learn more"),
     (re.compile(r"\b(?:click|tap|search) (?:here|below)\b,?\s*", re.I), ""),
+    # Обещание показать (решение Nataliia 09.10.2026, замечание S1): пользователь
+    # ждёт фото, а статья информационная. Пока не реджект — меняем в headline.
+    (re.compile(r"\b(?:take a (?:quick |closer )?look|look|see|peek|step) inside(?: of)?\s+(?=[a-z0-9$])", re.I), "learn about "),
+    (re.compile(r"\bsee what'?s (?:really |actually )?inside\b", re.I), "learn more"),
+    (re.compile(r"\b(?:see|watch) the (?:big )?reveal\b", re.I), "learn more"),
+    (re.compile(r"\bsee (?:the |these |all the )?(?:photos|pictures|pics)\b", re.I), "learn more"),
+    (re.compile(r"\b(?:come |go )?take a (?:quick |closer )?look at\s+", re.I), "learn about "),
+    (re.compile(r"\b(?:come |go |just )?take a (?:quick |closer )?look(?: inside)?\b", re.I), "learn more"),
+    (re.compile(r"\blook at (this|these)\b", re.I), r"learn about \1"),
 ]
 
 # Короткие бессмысленные токены между точками (партнёрка: «.lg lg.» — «Stray
@@ -342,7 +351,7 @@ def build_clean_headline(sub: dict, videos: list[dict]) -> str:
 # Подводки, которые ИИ-версия может добавить сверх исходной строки (те же, что
 # ставит механическая чистка выше). Любое другое новое слово = ИИ что-то
 # придумал, такой вариант не берём.
-_REWRITE_ALLOWED_NEW = {"see", "learn", "take", "a", "look", "at", "about", "the", "this"}
+_REWRITE_ALLOWED_NEW = {"see", "learn", "about", "the", "this"}
 
 
 def _words(s: str) -> list[str]:
