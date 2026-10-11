@@ -210,11 +210,12 @@ def clean_syntax(s: str) -> str:
 def _tidy_seams(s: str) -> str:
     """После вырезания куска из середины строки остаётся шов — лишняя точка,
     двойной пробел или точка в самом начале/конце. Подчищаем."""
+    s = re.sub(r"\s*[,:;]+\s*\.", ".", s)   # «gorgeous,.» «guide:.» → «.» (таблица S1, 11.10.2026)
     s = re.sub(r"\.{2,}", ".", s)
     s = re.sub(r"\.\s*\.", ".", s)
     s = re.sub(r"\s{2,}", " ", s)
     s = re.sub(r"([?!])(?=[A-Za-z0-9])", r"\1 ", s)
-    return s.strip(" .")
+    return s.strip(" .,:;")
 
 
 def strip_gibberish(s: str) -> str:
