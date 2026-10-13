@@ -109,10 +109,8 @@ _GIBBERISH_RE = re.compile(
 _HOOK_TAIL = r"[\s,!?.]*"
 _FOUND = r"\b(?:okay[,.]?\s*(?:so,?\s*|listen,?\s*)?i (?:just )?|i just )(?:found out|realized|discovered)"
 _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
-    # Обещание показать вид (13.10.2026). Пара с headline_clean.ts.
+    # «have you seen it/this…?» убираем (13.10.2026); «looks like» не трогаем (откат). Пара с headline_clean.ts.
     (re.compile(r"\b(?:have you (?:ever |already )?seen|did you see) (?:it|this|these|them|that|one)\b" + _HOOK_TAIL, re.I), ""),
-    (re.compile(r"\b(?:see |find out |here'?s |this is )?what (?:does |do |did )?(.{1,60}?) (?:really |actually )?looks? like\b", re.I), r"learn about \1"),
-    (re.compile(r"^.*\blooks? like (?:this|that)\b.*$", re.I), ""),
 
     # Междометия — просто вырезать вместе с запятой/восклицанием после.
     (re.compile(r"\boh my (?:god|gosh|goodness|lord)\b" + _HOOK_TAIL, re.I), ""),
