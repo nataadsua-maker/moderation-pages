@@ -121,7 +121,7 @@ _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     # Шок с продолжением «by/at …» → «take a look at …».
     (re.compile(r"\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked (?:by|at)\s+", re.I), "learn about "),
     # Шок без продолжения (или с «that …») — вырезать, мысль после «that» остаётся.
-    (re.compile(r"\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked\b(?:\s+that\b)?" + _HOOK_TAIL, re.I), ""),
+    (re.compile(r",?\s*(?:and |but )?\b(?:honestly,?\s*)?i(?:'?m| am| was) (?:so |really |honestly )?shocked\b(?:\s+that\b)?" + _HOOK_TAIL, re.I), ""),
     # «you won't believe …» → «see …».
     (re.compile(r"\byou(?:'ll)? (?:won'?t|never) believe\s+(?!me\b)(?=[a-z0-9$])", re.I), "see "),
     (re.compile(r"\byou(?:'ll)? (?:won'?t|never) believe(?: me)?\b" + _HOOK_TAIL, re.I), ""),
