@@ -109,6 +109,11 @@ _GIBBERISH_RE = re.compile(
 _HOOK_TAIL = r"[\s,!?.]*"
 _FOUND = r"\b(?:okay[,.]?\s*(?:so,?\s*|listen,?\s*)?i (?:just )?|i just )(?:found out|realized|discovered)"
 _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
+    # Обещание показать вид (13.10.2026). Пара с headline_clean.ts.
+    (re.compile(r"\b(?:have you (?:ever |already )?seen|did you see) (?:it|this|these|them|that|one)\b" + _HOOK_TAIL, re.I), ""),
+    (re.compile(r"\b(?:see |find out |here'?s |this is )?what (?:does |do |did )?(.{1,60}?) (?:really |actually )?looks? like\b", re.I), r"learn about \1"),
+    (re.compile(r"^.*\blooks? like (?:this|that)\b.*$", re.I), ""),
+
     # Междометия — просто вырезать вместе с запятой/восклицанием после.
     (re.compile(r"\boh my (?:god|gosh|goodness|lord)\b" + _HOOK_TAIL, re.I), ""),
     # Сожаление — законченная фраза, хвоста нет.
@@ -140,7 +145,7 @@ _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     # «go look this up yourself». Держать в паре с HOOKS в headline_clean.ts.
     (re.compile(r"\bwait (?:till|until|'til) you see\s+(?=[a-z0-9$])", re.I), "see "),
     (re.compile(r"\bwait (?:till|until|'til) you see(?: (?:it|this))?\b" + _HOOK_TAIL, re.I), ""),
-    (re.compile(r",?\s*(?:and |but )?(?:honestly,? )?i had no idea\b(?:\s+that\b)?" + _HOOK_TAIL, re.I), " "),
+    (re.compile(r",?\s*(?:and |but )?(?:honestly,? )?i had no idea\b[^.!?]*", re.I), ""),
     (re.compile(r"\b(?:go )?look (?:this|it) up (?:for )?yourself\b" + _HOOK_TAIL, re.I), ""),
     # «click here / tap here / tap below / tap to / search here» — в ролике на NB/SN
     # разрешены, но в headline для трекера заменяем на разрешённое (решение Nataliia
@@ -215,6 +220,7 @@ def _tidy_seams(s: str) -> str:
     s = re.sub(r"\.\s*\.", ".", s)
     s = re.sub(r"\s{2,}", " ", s)
     s = re.sub(r"([?!])(?=[A-Za-z0-9])", r"\1 ", s)
+    s = re.sub(r"(learn about [^.?!]{1,90})\?(\s+|$)", lambda m: m.group(1) + (". " if m.group(2).strip() == "" and m.group(2) else ""), s, flags=re.I)
     return s.strip(" .,:;")
 
 
