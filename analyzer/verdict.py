@@ -123,6 +123,20 @@ def assemble(submission: dict, l1_hits: list[dict], l2_result: dict, videos: lis
                 # 93% таких реджектов. Явное ловится классификатором выше.
                 if t == "adult_18plus":
                     continue
+                # Новостная подача (газета, выпуск новостей) — запрет без
+                # исключений (решение Nataliia 13.10.2026), отдельным Tier 1.
+                if t == "news_style":
+                    violations.append({
+                        "where": f"{label} {v_idx+1}" if kind == "image" else f"{label} {v_idx+1}, {fr['ts']} кадр",
+                        "title": "Новостная подача",
+                        "quote": detail or "кадр под газету / новости",
+                        "reason": "Крео оформлено как газета или выпуск новостей. Новостная подача запрещена.",
+                        "how_to_fix": "Убери оформление под газету или новости: название издания, дату, номер выпуска, «Breaking News». Оставь обычное фото и плашку.",
+                        "policy_section": "2.3",
+                        "category": "news_style",
+                        "tier": TIER1,
+                    })
+                    continue
                 is_18plus = False
                 where = f"{label} {v_idx+1}" if kind == "image" else f"{label} {v_idx+1}, {fr['ts']} кадр"
                 violations.append({
@@ -200,5 +214,6 @@ def _visual_reason(t: str) -> str:
         "gambling": "gambling / casino визуал",
         "politics": "политическая символика",
         "drugs": "наркотики",
+        "news_style": "новостная подача (газета / выпуск новостей)",
         "adult_18plus": "ADULT / 18+ контент (4.3, abs. prohibition)",
     }.get(t, t)

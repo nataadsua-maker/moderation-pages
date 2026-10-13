@@ -104,6 +104,10 @@ DESCRIBE_PROMPT = """Describe this single frame from a video. Report only what i
 4. In a section "NOTABLE:", mention if you see any of: side-by-side before/after comparison,
    nudity or sexual content, injuries/blood/shocking imagery, weapons, gambling (casino, slots,
    betting), politicians or political symbols, drugs, alcohol.
+   Also say explicitly if the frame is STYLED AS NEWS: a newspaper or magazine front page
+   (masthead with a paper name, date line, issue number, columns of small print), a news
+   website article layout, or a TV news broadcast (anchor desk, "BREAKING NEWS" banner,
+   news ticker, channel logo with LIVE). Name the masthead / news label if you can read it.
 
 Be literal and factual. Describe only what is actually visible, do not guess intent and do not
 describe what a similar image might contain."""
@@ -113,6 +117,9 @@ CLASSIFY_PROMPT = """You judge a DESCRIPTION of a single frame from an advertisi
 You cannot see the image — rely ONLY on what the description states, never invent details.
 
 TWO DIFFERENT STANDARDS APPLY depending on the violation type:
+
+• For news_style — FLAG whenever the description says the frame is styled as a newspaper,
+  news page or news broadcast (see criteria below).
 
 • For arrow_or_circle, fake_ui, before_after, fake_local, shock_content, weapons,
   gambling, politics, drugs — BE CONSERVATIVE. These are prone to false positives.
@@ -170,6 +177,15 @@ Violation types and STRICT criteria:
   ✓ Creative explicitly claims local relevance ({city}/"near you" text, fake local
     branding) without the lander actually being local.
   ✗ Showing a real location/city as part of product context — NOT a violation.
+
+- "news_style"
+  ✓ The frame is presented as NEWS: a newspaper or magazine front page (masthead / paper
+    name, date line, issue number, newspaper columns), a news-site article mock-up, or a TV
+    news broadcast look (anchor at a news desk, "BREAKING NEWS" / "NEWS" banner, news ticker,
+    channel logo with LIVE). This is a zero-tolerance rule — if the description says the frame
+    looks like a newspaper, news page or news broadcast, FLAG IT.
+  ✗ A plain headline caption over ordinary footage with no news masthead / news format —
+    NOT a violation. A person simply holding a phone or reading — NOT a violation.
 
 - "weapons" | "gambling" | "politics" | "drugs"
   ✓ These items shown as the MAIN visual subject (slot machine, gun, political figure, drugs).
