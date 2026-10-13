@@ -165,7 +165,7 @@ _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:come |go |just )?take a (?:quick |closer )?look(?: inside)?\b", re.I), "learn more"),
     (re.compile(r"\blook at (this|these)\b", re.I), r"learn about \1"),
     # Указание на конкретный предмет (решение Nataliia 09.10.2026, пункт 8 S1). Пара с headline_clean.ts.
-    (re.compile(r"\b(?:this|these|those|our)\s+(?!(?:is|are|was|were|will|would|can|could|may|might|has|have|had|does|did|year|years|week|month|season|time|winter|summer|spring|fall|autumn|weekend|morning|evening)\b)(?=[a-z0-9])", re.I), ""),
+    (re.compile(r"(?<!\blike )\b(?:this|these|those|our)\s+(?!(?:is|are|was|were|will|would|can|could|may|might|has|have|had|does|did|year|years|week|month|season|time|winter|summer|spring|fall|autumn|weekend|morning|evening)\b)(?=[a-z0-9])", re.I), ""),
     (re.compile(r"(?<!\bno )(?<!\bany )(?<!\bevery )\bone\s+(?!(?:of|day|time|more|another|by|or|thing\s+to\s+know)\b)(?=[a-z])", re.I), ""),
 ]
 
