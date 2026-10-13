@@ -157,7 +157,9 @@ _CLICKBAIT_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:click|tap|search) (?:here|below)\b,?\s*", re.I), ""),
     # Обещание показать (решение Nataliia 09.10.2026, замечание S1): пользователь
     # ждёт фото, а статья информационная. Пока не реджект — меняем в headline.
-    (re.compile(r"\b(?:take a (?:quick |closer )?look|look|see|peek|step) inside(?: of)?\s+(?=[a-z0-9$])", re.I), "learn about "),
+    (re.compile(r"\b(?:(?:take|sneak|have) a (?:quick |closer |little )?(?:look|peek)|look|see|peek|step) inside(?: of)?\s+(?=[a-z0-9$])", re.I), "learn about "),
+    (re.compile(r"\b(?:take|sneak|have) a (?:quick |closer |little )?peek at\s+", re.I), "learn about "),
+    (re.compile(r"\b(?:come |go |just )?(?:take|sneak|have) a (?:quick |closer |little )?peek(?: inside)?\b", re.I), "learn more"),
     (re.compile(r"\bsee what'?s (?:really |actually )?inside\b", re.I), "learn more"),
     (re.compile(r"\b(?:see|watch) the (?:big )?reveal\b", re.I), "learn more"),
     (re.compile(r"\bsee (?:the |these |all the )?(?:photos|pictures|pics)\b", re.I), "learn more"),
