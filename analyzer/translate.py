@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json
 
-from nim import text_check
+import ai_config
 
 SYSTEM_PROMPT = """You are a translator. Translate the given list of strings into Russian.
 
@@ -26,7 +26,7 @@ def batch_translate(texts: list[str]) -> list[str]:
     # Filter out empty / very short non-alphabetic strings
     payload = {"strings": texts}
     try:
-        resp = text_check(SYSTEM_PROMPT, json.dumps(payload, ensure_ascii=False))
+        resp, _ = ai_config.text_json(SYSTEM_PROMPT, json.dumps(payload, ensure_ascii=False))
         out = resp.get("translations") if isinstance(resp, dict) else None
         if isinstance(out, list) and len(out) == len(texts):
             return [str(t) for t in out]

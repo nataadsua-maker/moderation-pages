@@ -67,7 +67,7 @@ def available() -> bool:
     return bool(os.environ.get("GEMINI_API_KEY"))
 
 
-def describe_frame(frame_path: Path, question: str) -> str:
+def describe_frame(frame_path: Path, question: str, model: str | None = None) -> str:
     """Описать кадр тем же промптом, что уходит в NIM — ответ взаимозаменяем.
 
     Держим ровно тот же контракт, что и nim.vision_describe_frame: на входе кадр
@@ -89,7 +89,7 @@ def describe_frame(frame_path: Path, question: str) -> str:
         # творческим — выдуманная плашка уезжает в вердикт и в заголовок оффера.
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 800},
     }
-    url = f"{API_BASE}/{MODEL}:generateContent?key={os.environ['GEMINI_API_KEY']}"
+    url = f"{API_BASE}/{model or MODEL}:generateContent?key={os.environ['GEMINI_API_KEY']}"
     last = None
     for attempt in range(RETRIES):
         resp = None
@@ -112,12 +112,12 @@ def describe_frame(frame_path: Path, question: str) -> str:
     raise last if last else RuntimeError("Gemini failed")
 
 
-def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000) -> dict:
+def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000, model: str | None = None) -> dict:
     """Запасной текстовый вызов со строгим JSON — для проверки соответствия ленду
     (llm_checks.check), когда NIM отказал: 08.10.2026 вечерний наплыв заявок дал
     NIM 429 пять раз подряд, и три заявки ушли на ручную проверку. Тот же принцип,
     что у кадров: платим только за поломку."""
-    return _generate_json(system_prompt, user_payload, max_tokens)
+    return _generate_json(system_prompt, user_payload, max_tokens, model)
 
 
 def classify_frame(system_prompt: str, description: str) -> dict:
@@ -131,7 +131,7 @@ def classify_frame(system_prompt: str, description: str) -> dict:
     return _generate_json(system_prompt, description, 1000)
 
 
-def _generate_json(system_prompt: str, user_text: str, max_tokens: int) -> dict:
+def _generate_json(system_prompt: str, user_text: str, max_tokens: int, model: str | None = None) -> dict:
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": user_text}]}],
@@ -141,7 +141,7 @@ def _generate_json(system_prompt: str, user_text: str, max_tokens: int) -> dict:
             "maxOutputTokens": max_tokens,
         },
     }
-    url = f"{API_BASE}/{MODEL}:generateContent?key={os.environ['GEMINI_API_KEY']}"
+    url = f"{API_BASE}/{model or MODEL}:generateContent?key={os.environ['GEMINI_API_KEY']}"
     last = None
     for attempt in range(RETRIES):
         resp = None

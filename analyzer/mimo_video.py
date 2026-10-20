@@ -146,7 +146,7 @@ def detect_overlays(video_path: Path) -> list[dict] | None:
         return None
 
 
-def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000) -> dict:
+def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000, model: str | None = None) -> dict:
     """Текстовая проверка через MiMo — запасной путь проверки соответствия ленду,
     когда NIM отказал (решение Nataliia 08.10.2026: MiMo вместо/до Gemini).
     OpenAI-совместимый API, строгий JSON через response_format. Нет ключа или
@@ -155,7 +155,10 @@ def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000) -> 
     if not key:
         raise RuntimeError("MiMo: нет MIMO_API_KEY")
     payload = {
-        "model": os.environ.get("MIMO_TEXT_MODEL", MODEL),
+        "model": model or os.environ.get("MIMO_TEXT_MODEL", MODEL),
+        # Глубокое размышление по умолчанию включено и тянет ответ на минуты; для
+        # проверки по готовой инструкции оно не нужно (как в воркере).
+        "thinking": {"type": "disabled"},
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_payload},
@@ -178,4 +181,37 @@ def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000) -> 
         if r.status_code not in (429, 500, 502, 503, 504):
             break
         time.sleep(5 * (attempt + 1))
+    raise last
+
+
+def describe_image(frame_path: Path, question: str, model: str | None = None) -> str:
+    """Описать кадр/картинку через MiMo — тот же контракт, что nim.vision_describe_frame
+    (цепочка «Картинки» из Админки, ai_config.describe_image)."""
+    key = os.environ.get("MIMO_API_KEY")
+    if not key:
+        raise RuntimeError("MiMo: нет MIMO_API_KEY")
+    frame_path = Path(frame_path)
+    mime = "image/png" if frame_path.suffix.lower() == ".png" else "image/jpeg"
+    b64 = base64.b64encode(frame_path.read_bytes()).decode()
+    payload = {
+        "model": model or MODEL,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": question},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+        ]}],
+        "max_tokens": 1200,
+        "temperature": 0.2,
+        "thinking": {"type": "disabled"},
+    }
+    last = None
+    for attempt in range(3):
+        r = requests.post("https://api.xiaomimimo.com/v1/chat/completions",
+                          headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                          json=payload, timeout=90)
+        if r.status_code == 200:
+            return (r.json()["choices"][0]["message"].get("content") or "").strip()
+        last = RuntimeError(f"MiMo {r.status_code}: {r.text[:200]}")
+        if r.status_code not in (429, 500, 502, 503, 504):
+            break
+        time.sleep(4 * (attempt + 1))
     raise last

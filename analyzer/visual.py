@@ -8,8 +8,8 @@ from threading import Lock
 
 import requests
 
+import ai_config
 import gemini
-from nim import text_check, vision_describe_frame
 from video import format_ts
 
 
@@ -254,48 +254,25 @@ def explicit_adult(frame_path: Path) -> tuple[bool, float]:
 
 
 def analyze_frame(frame_path: Path) -> dict:
-    # A flaky vision call on one frame must NOT abort the whole submission —
-    # skip the frame (no OCR / no visual violations) and let the verdict complete.
+    # Модели — из Админки сервиса (вкладка «🤖 Сервисы ИИ», ai_config): описание кадра
+    # по цепочке «Картинки», полиси по описанию — по цепочке «Тексты». Сбой одной
+    # модели не роняет кадр — берётся следующая (20.10.2026: NVIDIA отдала 404 на
+    # наш ключ, Gemini 429, и 12 заявок подряд ушли на ручную проверку).
     # Кадр без разбора считается непрочитанным (_count) — см. vision_stats().
-    rescued = False
     try:
-        description = vision_describe_frame(frame_path, DESCRIBE_PROMPT)
+        description, used_v = ai_config.describe_image(frame_path, DESCRIBE_PROMPT)
     except Exception as e:
-        # NIM уронил кадр. Раньше здесь кадр терялся, и на трети кадров это
-        # пробивало гейт слепых вердиктов — заявка уходила модератору руками.
-        # Теперь пробуем дочитать его Gemini (вариант C): платим только за
-        # сбойные кадры. Нет ключа — ведём себя ровно как раньше.
-        if not gemini.available():
-            print(f"  vision failed for {frame_path} (skipping frame): {e}")
-            _count(failed=True)
-            return {"ocr_text": "", "visual_violations": []}
-        try:
-            description = gemini.describe_frame(frame_path, DESCRIBE_PROMPT)
-            rescued = True
-            print(f"  vision: NIM отказал ({type(e).__name__}), кадр дочитан Gemini")
-        except Exception as e2:
-            print(f"  vision failed for {frame_path} (skipping frame): NIM {e}; Gemini {e2}")
-            _count(failed=True)
-            return {"ocr_text": "", "visual_violations": []}
+        print(f"  vision failed for {frame_path} (skipping frame): {e}")
+        _count(failed=True)
+        return {"ocr_text": "", "visual_violations": []}
     try:
-        out = text_check(CLASSIFY_PROMPT, description)
+        out, used_t = ai_config.text_json(CLASSIFY_PROMPT, description, 1000)
     except Exception as e:
-        # Тот же запасной путь, что и на чтении кадра: текстовая модель NIM
-        # сыпется не только на наплыве (429), но и в тишину (503 "Service
-        # temporarily overloaded"). Кадр прочитан — терять его из-за второго
-        # шага обидно вдвойне.
-        if not gemini.available():
-            print(f"  policy classify failed for {frame_path} (skipping frame): {e}")
-            _count(failed=True)
-            return {"ocr_text": "", "visual_violations": [], "_raw": description[:500]}
-        try:
-            out = gemini.classify_frame(CLASSIFY_PROMPT, description)
-            rescued = True
-            print(f"  полиси: NIM отказал ({type(e).__name__}), кадр досчитан Gemini")
-        except Exception as e2:
-            print(f"  policy classify failed for {frame_path} (skipping frame): NIM {e}; Gemini {e2}")
-            _count(failed=True)
-            return {"ocr_text": "", "visual_violations": [], "_raw": description[:500]}
+        print(f"  policy classify failed for {frame_path} (skipping frame): {e}")
+        _count(failed=True)
+        return {"ocr_text": "", "visual_violations": [], "_raw": description[:500]}
+    chains = ai_config.chains()
+    rescued = used_v != chains["image"][0] or used_t != chains["text"][0]
     _count(failed=False, rescued=rescued)
     return out
 

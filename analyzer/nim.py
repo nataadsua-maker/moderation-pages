@@ -107,12 +107,12 @@ def _post_chat(payload: dict, timeout: int = TEXT_TIMEOUT, retries: int = TEXT_R
     raise last if last else RuntimeError("NIM failed")
 
 
-def vision_describe_frame(frame_path: Path, question: str) -> str:
+def vision_describe_frame(frame_path: Path, question: str, model: str | None = None) -> str:
     """Send a single frame + question to Llama 90B Vision."""
     with open(frame_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
     payload = {
-        "model": VISION_MODEL,
+        "model": model or VISION_MODEL,
         "messages": [{
             "role": "user",
             "content": [
@@ -127,10 +127,10 @@ def vision_describe_frame(frame_path: Path, question: str) -> str:
     return data["choices"][0]["message"]["content"].strip()
 
 
-def text_check(system_prompt: str, user_payload: str) -> dict:
+def text_check(system_prompt: str, user_payload: str, model: str | None = None) -> dict:
     """Send text-only check to Llama 70B; expects JSON in response."""
     payload = {
-        "model": TEXT_MODEL,
+        "model": model or TEXT_MODEL,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_payload},
