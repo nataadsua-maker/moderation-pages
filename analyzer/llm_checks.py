@@ -191,10 +191,11 @@ def _system_prompt(platform: str | None) -> str:
     разрешён внутри ролика (правило Nataliia, 24.08.2026). В полях объявления
     он запрещён на любом сорсе, поэтому исключение проговорено адресно."""
     # 08.10.2026: SmartNews — то же исключение, что Newsbreak (решение Nataliia).
+    # 22.10.2026: Facebook (и FB-2) — тоже (решение Nataliia).
     src = text_policy.norm_platform(platform)
-    if src not in ("nb", "sn"):
+    if src not in ("nb", "sn", "fb"):
         return SYSTEM_PROMPT
-    name = "Newsbreak" if src == "nb" else "SmartNews"
+    name = {"nb": "Newsbreak", "sn": "SmartNews", "fb": "Facebook"}[src]
     exception = f"""=== SOURCE-SPECIFIC EXCEPTION (traffic source: {name}) ===
 This submission runs on {name}. For THIS source only:
 - The phrases "click here", "tap here", "tap below", "tap to ...", "search here" are ALLOWED

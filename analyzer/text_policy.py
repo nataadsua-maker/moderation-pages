@@ -58,6 +58,7 @@ FALLBACK_STOP_WORD_RULES = [
     {"id": "get_yours", "pattern": r"\bget yours\b", "section": "2.4", "severity": "error",
      "hint": "Get Yours — запрещённый CTA"},
     # 08.10.2026: то же исключение и для SmartNews (решение Nataliia: «у сн и нб одинаково»).
+    # 22.10.2026: и для Facebook (fb2 нормализуется в fb) — решение Nataliia «в фб как нб».
     # В headline для трекера такие фразы заменяются на разрешённые (headline.py).
     # Правило Nataliia (24.08.2026): на Newsbreak такой CTA пропускаем ВНУТРИ
     # ролика (озвучка, плашки на кадрах). В Adtitle и Description он остаётся
@@ -65,7 +66,7 @@ FALLBACK_STOP_WORD_RULES = [
     # объявления (не in_media), так что в кнопке этот запрет в силе на всех сорсах.
     {"id": "click_tap_search_here", "pattern": r"\b(click here|tap (here|below|to)|search here)\b",
      "section": "2.3, 2.4", "severity": "error", "hint": "Click/Tap/Search Here — запрещённый CTA",
-     "media_exempt_sources": ["nb", "sn"]},
+     "media_exempt_sources": ["nb", "sn", "fb"]},
     {"id": "dollar_amount", "pattern": r"\$\d|\d+\s*(dollars|usd|/mo|per month|/yr)",
      "section": "2.3", "severity": "warn",
      "hint": "цифра/сумма — проверим что дословно есть на ленде"},
