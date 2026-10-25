@@ -5,8 +5,12 @@
   image — описать кадр / прочитать текст с картинки,
   video — плашки по видео целиком (MiMo),
   text  — текстовые проверки со строгим JSON.
-Id модели: "<провайдер>:<модель>", провайдеры mimo / gemini / nim.
+Id модели: "<провайдер>:<модель>", провайдеры mimo / gemini / nim / anthropic.
 Сервер недоступен — работаем по DEFAULTS (те же, что стоят в Админке по умолчанию).
+
+anthropic — платный резерв (решение Nataliia 25.10.2026), поэтому стоит ПОСЛЕДНИМ
+в цепочке «text»: срабатывает только когда MiMo/Gemini/NIM отказали все разом. Для
+image/video его нет — там три бесплатных/дешёвых варианта уже достаточно надёжны.
 """
 from __future__ import annotations
 
@@ -15,6 +19,7 @@ from pathlib import Path
 
 import requests
 
+import anthropic_client
 import gemini
 import mimo_video
 import nim
@@ -22,7 +27,8 @@ import nim
 DEFAULTS = {
     "image": ["mimo:mimo-v2.6-flash", "gemini:gemini-3.5-flash-lite", "nim:meta/llama-3.2-11b-vision-instruct"],
     "video": ["mimo:mimo-v2.6-flash"],
-    "text": ["mimo:mimo-v2.6-flash", "gemini:gemini-3.5-flash-lite", "nim:nvidia/nemotron-3-super-120b-a12b"],
+    "text": ["mimo:mimo-v2.6-flash", "gemini:gemini-3.5-flash-lite", "nim:nvidia/nemotron-3-super-120b-a12b",
+              "anthropic:claude-haiku-4-5-20251001"],
 }
 
 _chains: dict | None = None
@@ -96,6 +102,8 @@ def text_json(system_prompt: str, user_payload: str, max_tokens: int = 4000) -> 
                 out = gemini.text_json(system_prompt, user_payload, max_tokens, model=m)
             elif p == "nim":
                 out = nim.text_check(system_prompt, user_payload, model=m)
+            elif p == "anthropic":
+                out = anthropic_client.text_json(system_prompt, user_payload, max_tokens, model=m)
             else:
                 raise RuntimeError("неизвестный провайдер")
             return out, mid
