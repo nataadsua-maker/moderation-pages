@@ -20,3 +20,8 @@ def download(key: str, dest: Path) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     _client().download_file(os.environ["R2_BUCKET"], key, str(dest))
     return dest
+
+
+def upload(path: Path, key: str, content_type: str) -> str:
+    _client().upload_file(str(path), os.environ["R2_BUCKET"], key, ExtraArgs={"ContentType": content_type})
+    return key
