@@ -195,6 +195,11 @@ def parse_segments(wb) -> dict:
             code = re.sub(r"[^A-Za-z0-9]", "", cell(row, ci_code)).upper()
             if code:
                 entry["code"] = code
+            # Один домен может стоять в нескольких строках: старые сегменты
+            # «Забрали», новые «Активен». Берём активную строку, где бы она ни была.
+            prev = out.get(dom.lower())
+            if prev and "актив" in prev["status"].lower() and "актив" not in entry["status"].lower():
+                continue
             out[dom.lower()] = entry
         active = sum(1 for v in out.values() if "актив" in v["status"].lower())
         print(f"сегменты: вкладка «{name}», доменов {len(out)} (активных {active})")
