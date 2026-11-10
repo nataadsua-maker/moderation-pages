@@ -74,6 +74,7 @@ def main() -> None:
     ci_nick = find_col(hdr, "Ник в трекере")
     ci_tg = find_col(hdr, "Телега")
     ci_status = find_col(hdr, "Стату")
+    ci_email = find_col(hdr, "Почта рабочая")  # для бота: доступ к кабинетам NB
     if min(ci_fio, ci_nick, ci_tg) < 0:
         sys.exit(f"required columns not found (ФИО={ci_fio} Ник={ci_nick} Телега={ci_tg})")
 
@@ -95,7 +96,13 @@ def main() -> None:
             continue
         key = tg.lower().lstrip("@").strip()
         if key:
-            roster[key] = {"trackerNick": cell(row, ci_nick) or None, "fio": cell(row, ci_fio) or None}
+            email = cell(row, ci_email).lower()
+            roster[key] = {
+                "trackerNick": cell(row, ci_nick) or None,
+                "fio": cell(row, ci_fio) or None,
+                "tg": tg.strip(),
+                "email": email if "@" in email else None,
+            }
     print(f"roster entries: {len(roster)} (skipped fired: {fired})")
 
     acc = os.environ["CF_ACCOUNT_ID"]
