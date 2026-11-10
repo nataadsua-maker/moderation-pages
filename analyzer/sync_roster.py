@@ -44,11 +44,17 @@ def main() -> None:
 
     # Pick the «Сотрудники» sheet by name; fallback: the sheet whose header has
     # ФИО + Ник в трекере + Телега.
+    # Точное имя «сотрудники» важнее: рядом лежит «сотрудники (копия)» со старыми
+    # колонками, и выбор «первого похожего» ронял синк (с 08.11.2026).
     ws = None
-    for name in wb.sheetnames:
-        if "сотрудник" in name.lower():
-            ws = wb[name]
-            break
+    names_l = {n.strip().lower(): n for n in wb.sheetnames}
+    if "сотрудники" in names_l:
+        ws = wb[names_l["сотрудники"]]
+    else:
+        for name in wb.sheetnames:
+            if "сотрудник" in name.lower() and "копия" not in name.lower():
+                ws = wb[name]
+                break
     chosen = None
     if ws is not None:
         chosen = ws.title
